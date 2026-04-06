@@ -2,7 +2,7 @@
 import { useGameStore, t3 } from '../store/gameStore'
 import { realm1, realm2, realm3, realm4, realm5, characterImages } from '../data/realms'
 import { VirtualJoystick } from '../components/VirtualJoystick'
-import { Heart, Brain, Languages, Award, DoorOpen, Trophy, Volume2, VolumeX, Menu, X, Lock } from 'lucide-react'
+import { Heart, Brain, Languages, Award, DoorOpen, Trophy, Volume2, VolumeX, Menu, X, Lock, UserCircle } from 'lucide-react'
 import hubBgImg from '../assets/environment/hub_bg.png'
 import { isRealmEnabled, type RealmScreen } from '../config/prototype'
 
@@ -559,14 +559,26 @@ export const HubScreen: React.FC = () => {
         {/* Action buttons */}
         {isMobileView ? (
           <div style={{ position: 'relative', pointerEvents: 'all' }}>
-            <button onClick={() => setMenuOpen((open) => !open)} style={{
-              background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(12px)',
-              border: '1px solid rgba(255,255,255,0.18)', borderRadius: 10,
-              color: '#fff', padding: '7px 9px',
-              cursor: 'pointer', display: 'flex', alignItems: 'center',
-            }}>
-              {menuOpen ? <X size={16} /> : <Menu size={16} />}
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button onClick={() => setScreen('profile')} style={{
+                background: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(12px)',
+                border: '1px solid rgba(167,139,250,0.45)', borderRadius: 11,
+                color: '#ede9fe', padding: '8px 10px',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+                fontSize: 11, fontWeight: 800, fontFamily: 'var(--font-primary)',
+              }}>
+                <UserCircle size={14} /> {tt('प्रोफाइल', 'Profile', 'Profile')}
+              </button>
+
+              <button onClick={() => setMenuOpen((open) => !open)} style={{
+                background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(12px)',
+                border: '1px solid rgba(255,255,255,0.18)', borderRadius: 10,
+                color: '#fff', padding: '7px 9px',
+                cursor: 'pointer', display: 'flex', alignItems: 'center',
+              }}>
+                {menuOpen ? <X size={16} /> : <Menu size={16} />}
+              </button>
+            </div>
 
             {menuOpen && (
               <div className="glass-strong" style={{
@@ -574,6 +586,15 @@ export const HubScreen: React.FC = () => {
                 padding: 8, display: 'flex', flexDirection: 'column', gap: 6,
                 borderRadius: 12,
               }}>
+                <button onClick={() => { setScreen('profile'); setMenuOpen(false) }} style={{
+                  background: 'rgba(167,139,250,0.24)', border: '1px solid rgba(167,139,250,0.45)',
+                  borderRadius: 9, color: '#ede9fe', fontSize: 12, fontWeight: 800,
+                  padding: '8px 10px', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}>
+                  <UserCircle size={14} /> {tt('प्रोफाइल और प्रगति', 'Profile & Progress', 'Profile aur Progress')}
+                </button>
+
                 <button onClick={() => { setScreen('certificate'); setMenuOpen(false) }} style={{
                   background: 'rgba(253,230,138,0.2)', border: '1px solid rgba(253,230,138,0.45)',
                   borderRadius: 9, color: '#fde68a', fontSize: 12, fontWeight: 800,
@@ -607,6 +628,16 @@ export const HubScreen: React.FC = () => {
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 6, pointerEvents: 'all' }}>
+            <button onClick={() => setScreen('profile')} style={{
+              background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(12px)',
+              border: '1px solid rgba(167,139,250,0.45)', borderRadius: 10,
+              color: '#ede9fe', fontSize: 11, fontWeight: 800, padding: '6px 10px',
+              cursor: 'pointer', fontFamily: 'var(--font-primary)',
+              display: 'flex', alignItems: 'center', gap: 4,
+            }}>
+              <UserCircle size={14} /> {tt('प्रगति', 'Progress', 'Progress')}
+            </button>
+
             <button onClick={() => setScreen('certificate')} style={{
               background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)',
               border: '1px solid rgba(253,230,138,0.3)', borderRadius: 10,
