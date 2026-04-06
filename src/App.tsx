@@ -6,6 +6,7 @@ import { RealmScreen } from './screens/RealmScreen'
 import { ResultsScreen } from './screens/ResultsScreen'
 import { ProfileScreen } from './screens/ProfileScreen'
 import { CertificateScreen } from './screens/CertificateScreen'
+import { ZarooratGame } from './screens/ZarooratGame'
 import { realm1, realm2, realm3, realm4, realm5 } from './data/realms'
 import { preloadCriticalAudio } from './utils/speech'
 import { PROTOTYPE_MODE, isRealmEnabled, type RealmScreen as PrototypeRealmScreen } from './config/prototype'
@@ -50,6 +51,7 @@ function App() {
       case 'results': case 'gameover': return <ResultsScreen />
       case 'profile': return <ProfileScreen />
       case 'certificate': return <CertificateScreen />
+      case 'zaroorat': return <ZarooratGame />
       default: return <IntroScreen />
     }
   }

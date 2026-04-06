@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
 export type Language = 'hi' | 'en' | 'hinglish'
-export type Screen = 'intro' | 'hub' | 'realm1' | 'realm2' | 'realm3' | 'realm4' | 'realm5' | 'results' | 'gameover' | 'profile' | 'sakhisathi' | 'suraksha' | 'certificate'
+export type Screen = 'intro' | 'hub' | 'realm1' | 'realm2' | 'realm3' | 'realm4' | 'realm5' | 'results' | 'gameover' | 'profile' | 'sakhisathi' | 'suraksha' | 'certificate' | 'zaroorat'
 
 export interface PlayerStats {
   health: number
