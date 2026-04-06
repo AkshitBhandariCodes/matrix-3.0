@@ -103,6 +103,10 @@ export function VirtualJoystick({
     event.preventDefault()
     event.stopPropagation()
 
+    // If pointer events are already active, ignore touch-start to avoid
+    // pointer/touch double-handling on mobile browsers.
+    if (activePointerIdRef.current !== null) return
+
     const firstTouch = event.changedTouches[0]
     if (!firstTouch) return
 
@@ -184,7 +188,10 @@ export function VirtualJoystick({
 
   return (
     <div
+      data-virtual-joystick="true"
       ref={containerRef}
+      onPointerDownCapture={(event) => { event.preventDefault(); event.stopPropagation() }}
+      onTouchStartCapture={(event) => { event.preventDefault(); event.stopPropagation() }}
       onPointerDown={handlePointerDown}
       onTouchStart={handleTouchStart}
       onPointerUp={(event) => event.stopPropagation()}

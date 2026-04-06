@@ -445,6 +445,9 @@ export const SakhiSathi: React.FC = () => {
   }, [language, paymentAlert, voiceMode])
 
   const handleWorldPointer = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const targetEl = event.target as HTMLElement | null
+    if (targetEl?.closest('[data-virtual-joystick="true"]')) return
+
     const rect = worldRef.current?.getBoundingClientRect()
     if (!rect) return
 
@@ -495,7 +498,10 @@ export const SakhiSathi: React.FC = () => {
         </div>
 
         {isMobileView ? (
-          <div style={{ position: 'relative' }}>
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button onClick={advanceDay} className="btn-glass" style={{ padding: '8px 10px', fontSize: 11 }}>
+              <CalendarDays size={14} /> +1
+            </button>
             <button onClick={() => setMenuOpen((v) => !v)} className="btn-glass" style={{ padding: '8px 10px' }}>
               {menuOpen ? <X size={14} /> : <Menu size={14} />}
             </button>
