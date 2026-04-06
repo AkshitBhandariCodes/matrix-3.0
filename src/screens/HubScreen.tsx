@@ -2,7 +2,7 @@
 import { useGameStore, t3 } from '../store/gameStore'
 import { realm1, realm2, realm3, realm4, realm5, characterImages } from '../data/realms'
 import { VirtualJoystick } from '../components/VirtualJoystick'
-import { Heart, Brain, Languages, Award, DoorOpen, Trophy, Volume2, VolumeX, Menu, X, Lock, UserCircle } from 'lucide-react'
+import { Heart, Brain, Languages, Award, DoorOpen, Trophy, Volume2, VolumeX, Menu, X, Lock, UserCircle, Users, ShieldAlert } from 'lucide-react'
 import hubBgImg from '../assets/environment/hub_bg.png'
 import { isRealmEnabled, type RealmScreen } from '../config/prototype'
 
@@ -618,6 +618,24 @@ export const HubScreen: React.FC = () => {
                   display: 'flex', alignItems: 'center', gap: 6,
                 }}>
                   <UserCircle size={14} /> {tt('प्रोफाइल और प्रगति', 'Profile & Progress', 'Profile aur Progress')}
+                </button>
+
+                <button onClick={() => { setScreen('sakhisathi'); setMenuOpen(false) }} style={{
+                  background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.45)',
+                  borderRadius: 9, color: '#86efac', fontSize: 12, fontWeight: 800,
+                  padding: '8px 10px', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}>
+                  <Users size={14} /> {tt('SHG सिमुलेशन', 'SHG Simulation', 'SHG Simulation')}
+                </button>
+
+                <button onClick={() => { setScreen('suraksha'); setMenuOpen(false) }} style={{
+                  background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.45)',
+                  borderRadius: 9, color: '#fca5a5', fontSize: 12, fontWeight: 800,
+                  padding: '8px 10px', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}>
+                  <ShieldAlert size={14} /> {tt('सुरक्षा सायरन', 'Safety Siren', 'Suraksha Siren')}
                 </button>
 
                 <button onClick={() => { setScreen('certificate'); setMenuOpen(false) }} style={{

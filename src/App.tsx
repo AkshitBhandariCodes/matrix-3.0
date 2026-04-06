@@ -7,6 +7,8 @@ import { ResultsScreen } from './screens/ResultsScreen'
 import { ProfileScreen } from './screens/ProfileScreen'
 import { CertificateScreen } from './screens/CertificateScreen'
 import { ZarooratGame } from './screens/ZarooratGame'
+import { SakhiSathi } from './screens/SakhiSathi'
+import { SurakshaSiren } from './screens/SurakshaSiren'
 import { realm1, realm2, realm3, realm4, realm5 } from './data/realms'
 import { preloadCriticalAudio } from './utils/speech'
 import { PROTOTYPE_MODE, isRealmEnabled, type RealmScreen as PrototypeRealmScreen } from './config/prototype'
@@ -23,11 +25,6 @@ function App() {
 
   useEffect(() => {
     if (!PROTOTYPE_MODE) return
-
-    if (screen === 'suraksha' || screen === 'sakhisathi') {
-      setScreen('hub')
-      return
-    }
 
     if (isRealmScreen(screen) && !isRealmEnabled(screen)) {
       setScreen('hub')
@@ -52,6 +49,8 @@ function App() {
       case 'profile': return <ProfileScreen />
       case 'certificate': return <CertificateScreen />
       case 'zaroorat': return <ZarooratGame />
+      case 'sakhisathi': return <SakhiSathi />
+      case 'suraksha': return <SurakshaSiren />
       default: return <IntroScreen />
     }
   }

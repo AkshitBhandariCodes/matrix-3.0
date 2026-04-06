@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useGameStore, t3 } from '../store/gameStore'
-import { Heart, Brain, Languages, UserCircle, Volume2, VolumeX, Menu, X } from 'lucide-react'
+import { Heart, Brain, Languages, UserCircle, Volume2, VolumeX, Menu, X, Users, ShieldAlert } from 'lucide-react'
 
 interface HUDProps {
   showProfile?: boolean
@@ -125,6 +125,26 @@ export const HUD: React.FC<HUDProps> = ({ showProfile = true, showLang = true, s
               padding: 8, display: 'flex', flexDirection: 'column', gap: 6,
               borderRadius: 12,
             }}>
+              {showProfile && (
+                <button onClick={() => { setScreen('sakhisathi'); setMenuOpen(false) }} style={{
+                  background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.45)',
+                  borderRadius: 9, color: '#86efac', fontSize: 12, fontWeight: 800,
+                  padding: '8px 10px', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}>
+                  <Users size={14} /> {tt('SHG सिमुलेशन', 'SHG Simulation', 'SHG Simulation')}
+                </button>
+              )}
+              {showProfile && (
+                <button onClick={() => { setScreen('suraksha'); setMenuOpen(false) }} style={{
+                  background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.45)',
+                  borderRadius: 9, color: '#fca5a5', fontSize: 12, fontWeight: 800,
+                  padding: '8px 10px', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}>
+                  <ShieldAlert size={14} /> {tt('सुरक्षा सायरन', 'Safety Siren', 'Suraksha Siren')}
+                </button>
+              )}
               {showVoice && (
                 <button onClick={() => { toggleVoiceMode(); setMenuOpen(false) }} style={{
                   background: voiceMode ? 'rgba(167,139,250,0.25)' : 'rgba(255,255,255,0.12)',
