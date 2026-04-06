@@ -3,6 +3,7 @@ import { useGameStore, t3 } from '../store/gameStore'
 import { characterImages } from '../data/realms'
 import { speak } from '../utils/speech'
 import { VirtualJoystick } from '../components/VirtualJoystick'
+import realm5Bg from '../assets/environment/realm5_bg.png'
 import {
   ArrowLeft,
   Award,
@@ -139,6 +140,7 @@ export const SakhiSathi: React.FC = () => {
 
   const [playerPos, setPlayerPos] = useState({ x: 48, y: 56 })
   const playerRef = useRef(playerPos)
+  const keysRef = useRef<Set<string>>(new Set())
   const joystickRef = useRef({ dx: 0, dy: 0 })
   const targetRef = useRef<{ x: number; y: number } | null>(null)
   const worldRef = useRef<HTMLDivElement>(null)
@@ -370,18 +372,44 @@ export const SakhiSathi: React.FC = () => {
   }, [playerPos])
 
   useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      keysRef.current.add(event.key.toLowerCase())
+    }
+    const onKeyUp = (event: KeyboardEvent) => {
+      keysRef.current.delete(event.key.toLowerCase())
+    }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+    }
+  }, [])
+
+  useEffect(() => {
     let raf = 0
-    const speed = 0.42
+    const speed = 0.7
     const loop = () => {
       const current = playerRef.current
       let nextX = current.x
       let nextY = current.y
-      const jx = joystickRef.current.dx
-      const jy = joystickRef.current.dy
+      const keys = keysRef.current
 
-      if (jx || jy) {
-        nextX += jx * speed
-        nextY += jy * speed
+      let dx = joystickRef.current.dx
+      let dy = joystickRef.current.dy
+
+      if (keys.has('w') || keys.has('arrowup')) dy -= 1
+      if (keys.has('s') || keys.has('arrowdown')) dy += 1
+      if (keys.has('a') || keys.has('arrowleft')) dx -= 1
+      if (keys.has('d') || keys.has('arrowright')) dx += 1
+
+      const mag = Math.hypot(dx, dy)
+
+      if (mag > 0) {
+        const ndx = dx / mag
+        const ndy = dy / mag
+        nextX += ndx * speed
+        nextY += ndy * speed
         targetRef.current = null
       } else if (targetRef.current) {
         const dx = targetRef.current.x - nextX
@@ -565,6 +593,23 @@ export const SakhiSathi: React.FC = () => {
           perspective: '860px',
         }}
       >
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          backgroundImage: `url(${realm5Bg})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          opacity: 0.28,
+          pointerEvents: 'none',
+        }} />
+
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'linear-gradient(160deg, rgba(5,22,28,0.45), rgba(3,9,17,0.7))',
+          pointerEvents: 'none',
+        }} />
+
         <div style={{
           position: 'absolute',
           inset: 0,

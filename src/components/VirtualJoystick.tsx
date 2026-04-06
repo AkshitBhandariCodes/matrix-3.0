@@ -69,7 +69,7 @@ export function VirtualJoystick({
     const nx = dx / radius
     const ny = dy / radius
 
-    if (Math.abs(nx) < 0.1 && Math.abs(ny) < 0.1) {
+    if (Math.abs(nx) < 0.06 && Math.abs(ny) < 0.06) {
       onStop()
       return
     }
@@ -100,6 +100,7 @@ export function VirtualJoystick({
   }, [handleMove, resetJoystick, updateCenter])
 
   const handleTouchStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    event.preventDefault()
     event.stopPropagation()
 
     const firstTouch = event.changedTouches[0]
