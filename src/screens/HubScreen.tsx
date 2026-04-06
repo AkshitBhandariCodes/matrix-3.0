@@ -522,37 +522,62 @@ export const HubScreen: React.FC = () => {
         padding: '10px 14px',
         background: 'linear-gradient(180deg, rgba(0,0,0,0.65) 0%, transparent 100%)',
       }}>
-        <div className="glass-strong" style={{
-          padding: '8px 14px', display: 'flex', gap: 12, alignItems: 'center', pointerEvents: 'all',
-        }}>
-          {/* Health */}
-          <div className="stat-bar-container">
-            <div className="stat-bar-icon" style={{ color: '#ef4444' }}>
-              <Heart size={16} fill="#ef4444" />
+        {isMobileView ? (
+          <div className="glass-strong" style={{
+            padding: '6px 8px', display: 'flex', gap: 8, alignItems: 'center', pointerEvents: 'all',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '3px 6px', borderRadius: 999,
+              background: 'rgba(239,68,68,0.12)', color: '#ef4444',
+              fontSize: 11, fontWeight: 800,
+            }}>
+              <Heart size={13} fill="#ef4444" />
+              <span>{stats.health}</span>
             </div>
-            <div className="stat-bar-track" style={{ background: '#3b0a0a', minWidth: 80 }}>
-              <div className="stat-bar-fill" style={{
-                width: `${stats.health}%`,
-                background: stats.health > 30 ? 'linear-gradient(90deg, #ef4444, #f87171)' : 'linear-gradient(90deg, #991b1b, #ef4444)',
-                boxShadow: stats.health <= 30 ? '0 0 8px rgba(239,68,68,0.5)' : 'none',
-              }} />
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '3px 6px', borderRadius: 999,
+              background: 'rgba(167,139,250,0.14)', color: '#a78bfa',
+              fontSize: 11, fontWeight: 800,
+            }}>
+              <Brain size={13} />
+              <span>{stats.wisdom}</span>
             </div>
-            <span className="stat-bar-label" style={{ color: '#ef4444' }}>{stats.health}</span>
           </div>
-          {/* Wisdom */}
-          <div className="stat-bar-container">
-            <div className="stat-bar-icon" style={{ color: '#a78bfa' }}>
-              <Brain size={16} />
+        ) : (
+          <div className="glass-strong" style={{
+            padding: '8px 14px', display: 'flex', gap: 12, alignItems: 'center', pointerEvents: 'all',
+          }}>
+            {/* Health */}
+            <div className="stat-bar-container">
+              <div className="stat-bar-icon" style={{ color: '#ef4444' }}>
+                <Heart size={16} fill="#ef4444" />
+              </div>
+              <div className="stat-bar-track" style={{ background: '#3b0a0a', minWidth: 80 }}>
+                <div className="stat-bar-fill" style={{
+                  width: `${stats.health}%`,
+                  background: stats.health > 30 ? 'linear-gradient(90deg, #ef4444, #f87171)' : 'linear-gradient(90deg, #991b1b, #ef4444)',
+                  boxShadow: stats.health <= 30 ? '0 0 8px rgba(239,68,68,0.5)' : 'none',
+                }} />
+              </div>
+              <span className="stat-bar-label" style={{ color: '#ef4444' }}>{stats.health}</span>
             </div>
-            <div className="stat-bar-track" style={{ background: '#1e0a3e', minWidth: 80 }}>
-              <div className="stat-bar-fill" style={{
-                width: `${stats.wisdom}%`,
-                background: 'linear-gradient(90deg, #7c3aed, #a78bfa)',
-              }} />
+            {/* Wisdom */}
+            <div className="stat-bar-container">
+              <div className="stat-bar-icon" style={{ color: '#a78bfa' }}>
+                <Brain size={16} />
+              </div>
+              <div className="stat-bar-track" style={{ background: '#1e0a3e', minWidth: 80 }}>
+                <div className="stat-bar-fill" style={{
+                  width: `${stats.wisdom}%`,
+                  background: 'linear-gradient(90deg, #7c3aed, #a78bfa)',
+                }} />
+              </div>
+              <span className="stat-bar-label" style={{ color: '#a78bfa' }}>{stats.wisdom}</span>
             </div>
-            <span className="stat-bar-label" style={{ color: '#a78bfa' }}>{stats.wisdom}</span>
           </div>
-        </div>
+        )}
 
         <div style={{ flex: 1 }} />
 
@@ -567,7 +592,7 @@ export const HubScreen: React.FC = () => {
                 cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
                 fontSize: 11, fontWeight: 800, fontFamily: 'var(--font-primary)',
               }}>
-                <UserCircle size={14} /> {tt('प्रोफाइल', 'Profile', 'Profile')}
+                <UserCircle size={14} />
               </button>
 
               <button onClick={() => setMenuOpen((open) => !open)} style={{
