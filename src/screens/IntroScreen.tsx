@@ -1,12 +1,11 @@
 import React, { useState, useRef } from 'react'
 import { useGameStore, t3 } from '../store/gameStore'
-import { characterImages } from '../data/realms'
+import { characterImages, realm1, realm2, realm3, realm4, realm5 } from '../data/realms'
 import {
   Languages, Wallet, ShieldCheck, Store, TrendingUp, Landmark,
   Gamepad2, Volume2, WifiOff, Users, GraduationCap, ChevronRight,
   Sparkles, Download
 } from 'lucide-react'
-import { PROTOTYPE_MODE } from '../config/prototype'
 
 interface DeferredInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -67,20 +66,15 @@ export const IntroScreen: React.FC = () => {
     { icon: <GraduationCap size={18} />, label: tt('खेल कर सीखो', 'Learn by Playing', 'Khel kar Seekho'), color: '#3b82f6' },
   ]
 
-  const activeRealmCount = PROTOTYPE_MODE ? 2 : 5
+  const realms = [
+    { number: 1, icon: <Wallet size={16} />, label: tt(realm1.title_hi, realm1.title_en, realm1.title_hinglish), color: realm1.color },
+    { number: 2, icon: <ShieldCheck size={16} />, label: tt(realm2.title_hi, realm2.title_en, realm2.title_hinglish), color: realm2.color },
+    { number: 3, icon: <Store size={16} />, label: tt(realm3.title_hi, realm3.title_en, realm3.title_hinglish), color: realm3.color },
+    { number: 4, icon: <TrendingUp size={16} />, label: tt(realm4.title_hi, realm4.title_en, realm4.title_hinglish), color: realm4.color },
+    { number: 5, icon: <Landmark size={16} />, label: tt(realm5.title_hi, realm5.title_en, realm5.title_hinglish), color: realm5.color },
+  ]
 
-  const realms = PROTOTYPE_MODE
-    ? [
-      { icon: <Wallet size={16} />, label: tt('घर का खज़ाना', 'Home Budget', 'Ghar Ka Khazana'), color: '#f59e0b' },
-      { icon: <ShieldCheck size={16} />, label: tt('डिजिटल दुनिया', 'Digital Safety', 'Digital Duniya'), color: '#3b82f6' },
-    ]
-    : [
-      { icon: <Wallet size={16} />, label: tt('घर का खज़ाना', 'Home Budget', 'Ghar Ka Khazana'), color: '#f59e0b' },
-      { icon: <ShieldCheck size={16} />, label: tt('डिजिटल दुनिया', 'Digital Safety', 'Digital Duniya'), color: '#3b82f6' },
-      { icon: <Store size={16} />, label: tt('उद्यम की राह', 'Business Path', 'Udyam Ki Raah'), color: '#10b981' },
-      { icon: <TrendingUp size={16} />, label: tt('भविष्य की उड़ान', 'Future Flight', 'Bhavishya Ki Udaan'), color: '#9333ea' },
-      { icon: <Landmark size={16} />, label: tt('सरकारी योजनाएं', 'Govt Schemes', 'Sarkari Yojanayein'), color: '#0d9488' },
-    ]
+  const activeRealmCount = realms.length
 
   return (
     <div style={{
@@ -157,17 +151,11 @@ export const IntroScreen: React.FC = () => {
         padding: '14px 18px', maxWidth: 400, width: '100%', animation: 'fadeInUp 0.6s 0.3s ease both',
       }}>
         <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, lineHeight: 1.65, margin: 0, textAlign: 'center' }}>
-          {PROTOTYPE_MODE
-            ? tt(
-              'नमस्ते! मैं सखी हूं — आपकी गाइड। इस first draft में 2 worlds खुले हैं: घर का खज़ाना और डिजिटल दुनिया।',
-              "Hello! I'm Sakhi — your guide. In this first draft, 2 worlds are open: Ghar Ka Khazana and Digital Duniya.",
-              'Namaste! Main Sakhi hun — tumhari guide. Is first draft mein 2 worlds khule hain: Ghar Ka Khazana aur Digital Duniya.',
-            )
-            : tt(
-              'नमस्ते! मैं सखी हूं — आपकी गाइड। पाँच realms, सरकारी योजनाओं से लेकर digital safety तक — खेल कर सीखो!',
-              "Hello! I'm Sakhi — your guide. Five realms, from government schemes to digital safety — learn by playing!",
-              'Namaste! Main Sakhi hun — tumhari guide. Paanch realms, sarkari yojanaon se lekar digital safety tak — khel kar seekho!',
-            )}
+          {tt(
+            'नमस्ते! मैं सखी हूं — आपकी गाइड। इस यात्रा में 5 realms हैं। नीचे सभी realm नंबर और नाम दिए गए हैं।',
+            "Hello! I'm Sakhi — your guide. This journey has 5 realms. Realm numbers and names are listed below.",
+            'Namaste! Main Sakhi hun — tumhari guide. Is journey mein 5 realms hain. Neeche sabhi realm number aur names diye gaye hain.',
+          )}
         </p>
       </div>
 
@@ -177,13 +165,13 @@ export const IntroScreen: React.FC = () => {
         maxWidth: 400, animation: 'fadeInUp 0.6s 0.4s ease both',
       }}>
         {realms.map((r) => (
-          <span key={r.label} style={{
+          <span key={r.number} style={{
             background: `${r.color}15`, border: `1px solid ${r.color}30`,
             borderRadius: 20, padding: '5px 12px', fontSize: 11,
             color: r.color, fontWeight: 700,
             display: 'flex', alignItems: 'center', gap: 5,
           }}>
-            {r.icon} {r.label}
+            {r.icon} {`${r.number}. ${r.label}`}
           </span>
         ))}
       </div>

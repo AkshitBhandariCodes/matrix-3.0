@@ -256,14 +256,6 @@ export const HubScreen: React.FC = () => {
     { x: (realm5.mapGateX / 100) * ww, y: (realm5.mapGateY / 100) * wh, color: realm5.color, realmNumber: 5, label_hi: realm5.title_hi, label_en: realm5.title_en, label_hinglish: realm5.title_hinglish, screen: 'realm5', completed: realm5Completed, enabled: isRealmEnabled('realm5') },
   ], [realm1Completed, realm2Completed, realm3Completed, realm4Completed, realm5Completed])
 
-  const realmLegend = [
-    { realmNumber: 1, label_hi: realm1.title_hi, label_en: realm1.title_en, label_hinglish: realm1.title_hinglish, color: realm1.color, enabled: isRealmEnabled('realm1') },
-    { realmNumber: 2, label_hi: realm2.title_hi, label_en: realm2.title_en, label_hinglish: realm2.title_hinglish, color: realm2.color, enabled: isRealmEnabled('realm2') },
-    { realmNumber: 3, label_hi: realm3.title_hi, label_en: realm3.title_en, label_hinglish: realm3.title_hinglish, color: realm3.color, enabled: isRealmEnabled('realm3') },
-    { realmNumber: 4, label_hi: realm4.title_hi, label_en: realm4.title_en, label_hinglish: realm4.title_hinglish, color: realm4.color, enabled: isRealmEnabled('realm4') },
-    { realmNumber: 5, label_hi: realm5.title_hi, label_en: realm5.title_en, label_hinglish: realm5.title_hinglish, color: realm5.color, enabled: isRealmEnabled('realm5') },
-  ]
-
   const enterGate = useCallback((gate: Gate) => {
     if (!gate.enabled) return
     setMapPosition({ ...posRef.current })
@@ -719,39 +711,6 @@ export const HubScreen: React.FC = () => {
             </button>
           </div>
         )}
-      </div>
-
-      <div style={{
-        position: 'absolute', top: isMobileView ? 66 : 72, left: 12, right: 12,
-        zIndex: 9, pointerEvents: 'none',
-      }}>
-        <div className="glass-strong" style={{
-          padding: isMobileView ? '6px 8px' : '8px 10px',
-          display: 'flex', gap: 6, flexWrap: 'wrap',
-        }}>
-          {realmLegend.map((realm) => {
-            const label = `${realm.realmNumber}. ${tt(realm.label_hi, realm.label_en, realm.label_hinglish)}`
-            return (
-              <div key={realm.realmNumber} style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                padding: '4px 7px', borderRadius: 999,
-                border: `1px solid ${realm.enabled ? `${realm.color}66` : 'rgba(148,163,184,0.55)'}`,
-                background: realm.enabled ? `${realm.color}20` : 'rgba(100,116,139,0.22)',
-                color: realm.enabled ? '#f8fafc' : '#cbd5e1',
-                fontSize: isMobileView ? 10 : 11,
-                fontWeight: 800,
-                maxWidth: isMobileView ? '100%' : undefined,
-              }}>
-                <span style={{
-                  width: 6, height: 6, borderRadius: '50%',
-                  background: realm.enabled ? realm.color : '#94a3b8',
-                  flexShrink: 0,
-                }} />
-                <span>{label}</span>
-              </div>
-            )
-          })}
-        </div>
       </div>
 
       {nearGate && (
