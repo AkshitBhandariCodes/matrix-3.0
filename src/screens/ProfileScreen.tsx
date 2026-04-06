@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useGameStore, t3 } from '../store/gameStore'
 import { realm1, realm2, realm3, realm4, realm5, characterImages } from '../data/realms'
-import { ArrowLeft, Heart, Brain, Star, CheckCircle2, Lock, Award, Users, ShieldAlert } from 'lucide-react'
+import { ArrowLeft, Heart, Brain, Star, CheckCircle2, Lock, Award } from 'lucide-react'
 import { isRealmEnabled, type RealmScreen } from '../config/prototype'
 
 export const ProfileScreen: React.FC = () => {
@@ -173,14 +173,8 @@ export const ProfileScreen: React.FC = () => {
 
       {/* Quick Actions */}
       <div style={{ display: 'flex', gap: 8, width: '100%', maxWidth: 440, animation: 'fadeInUp 0.5s 0.25s ease both' }}>
-        <button onClick={() => setScreen('sakhisathi')} className="btn-glass" style={{ flex: 1, fontSize: 12 }}>
-          <Users size={14} /> {tt('सखी साथी', 'Sakhi Sathi', 'Sakhi Sathi')}
-        </button>
         <button onClick={() => setScreen('certificate')} className="btn-glass" style={{ flex: 1, fontSize: 12 }}>
           <Award size={14} /> {tt('Certificate', 'Certificate', 'Certificate')}
-        </button>
-        <button onClick={() => setScreen('suraksha')} className="btn-glass" style={{ flex: 1, fontSize: 12 }}>
-          <ShieldAlert size={14} /> {tt('सुरक्षा', 'Safety', 'Suraksha')}
         </button>
       </div>
 

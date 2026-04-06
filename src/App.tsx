@@ -5,11 +5,8 @@ import { HubScreen } from './screens/HubScreen'
 import { RealmScreen } from './screens/RealmScreen'
 import { ResultsScreen } from './screens/ResultsScreen'
 import { ProfileScreen } from './screens/ProfileScreen'
-import { SurakshaSiren } from './screens/SurakshaSiren'
 import { CertificateScreen } from './screens/CertificateScreen'
-import { SakhiSathi } from './screens/SakhiSathi'
 import { realm1, realm2, realm3, realm4, realm5 } from './data/realms'
-import { ShieldAlert } from 'lucide-react'
 import { preloadCriticalAudio } from './utils/speech'
 import { PROTOTYPE_MODE, isRealmEnabled, type RealmScreen as PrototypeRealmScreen } from './config/prototype'
 
@@ -25,6 +22,11 @@ function App() {
 
   useEffect(() => {
     if (!PROTOTYPE_MODE) return
+
+    if (screen === 'suraksha' || screen === 'sakhisathi') {
+      setScreen('hub')
+      return
+    }
 
     if (isRealmScreen(screen) && !isRealmEnabled(screen)) {
       setScreen('hub')
@@ -47,16 +49,10 @@ function App() {
         return <RealmScreen realm={realmMap[screen]} realmNumber={realmNumMap[screen]} />
       case 'results': case 'gameover': return <ResultsScreen />
       case 'profile': return <ProfileScreen />
-      case 'suraksha': return <SurakshaSiren />
       case 'certificate': return <CertificateScreen />
-      case 'sakhisathi': return <SakhiSathi />
       default: return <IntroScreen />
     }
   }
-
-  const isRealmScreenNow = isRealmScreen(screen)
-  // Hide siren in SHG world and keep it away from bottom dialogue on realm screens.
-  const showSiren = !PROTOTYPE_MODE && screen !== 'intro' && screen !== 'suraksha' && screen !== 'sakhisathi'
 
   return (
     <div style={{
@@ -65,18 +61,6 @@ function App() {
       position: 'relative', overflow: 'hidden',
     }}>
       {renderScreen()}
-
-      {/* Suraksha Siren floating button */}
-      {showSiren && (
-        <button
-          className="siren-btn"
-          onClick={() => setScreen('suraksha')}
-          title="Suraksha Siren"
-          style={isRealmScreenNow ? { top: 18, right: 18, bottom: 'auto' } : undefined}
-        >
-          <ShieldAlert size={24} />
-        </button>
-      )}
 
       {/* Screen transition overlay */}
       {transitioning && (
