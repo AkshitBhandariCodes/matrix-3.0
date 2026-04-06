@@ -2,6 +2,7 @@ import React from 'react'
 import { useGameStore, t3 } from '../store/gameStore'
 import { realm1, realm2, realm3, realm4, realm5 } from '../data/realms'
 import { Trophy, Heart, Brain, RotateCcw, CheckCircle2, Lock, Award } from 'lucide-react'
+import { isRealmEnabled, type RealmScreen } from '../config/prototype'
 
 export const ResultsScreen: React.FC = () => {
   const {
@@ -12,9 +13,19 @@ export const ResultsScreen: React.FC = () => {
   } = useGameStore()
 
   const tt = (hi: string, en: string, hg: string) => t3(hi, en, hg, language)
-  const totalScore = realm1Score + realm2Score + realm3Score + realm4Score + realm5Score
-  const maxScore = 15 * 5 * 5 // 15 max per challenge × 5 challenges × 5 realms
-  const percentage = Math.round((totalScore / maxScore) * 100)
+
+  const allRealmData: Array<{ screen: RealmScreen; realm: typeof realm1; score: number; completed: boolean }> = [
+    { screen: 'realm1', realm: realm1, score: realm1Score, completed: realm1Completed },
+    { screen: 'realm2', realm: realm2, score: realm2Score, completed: realm2Completed },
+    { screen: 'realm3', realm: realm3, score: realm3Score, completed: realm3Completed },
+    { screen: 'realm4', realm: realm4, score: realm4Score, completed: realm4Completed },
+    { screen: 'realm5', realm: realm5, score: realm5Score, completed: realm5Completed },
+  ]
+
+  const realmData = allRealmData.filter((item) => isRealmEnabled(item.screen))
+  const totalScore = realmData.reduce((sum, item) => sum + item.score, 0)
+  const maxScore = realmData.reduce((sum, item) => sum + item.realm.challenges.length * 15, 0)
+  const percentage = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0
   const avgStat = Math.round((stats.health + stats.wisdom) / 2)
   const isGameOver = screen === 'gameover'
 
@@ -29,14 +40,6 @@ export const ResultsScreen: React.FC = () => {
       msg: tt('हिम्मत मत हारो! फिर से खेलो!', "Don't give up! Try again!", 'Himmat mat haaro! Phir se khelo!') }
   }
   const grade = getGrade()
-
-  const realmData = [
-    { realm: realm1, score: realm1Score, completed: realm1Completed },
-    { realm: realm2, score: realm2Score, completed: realm2Completed },
-    { realm: realm3, score: realm3Score, completed: realm3Completed },
-    { realm: realm4, score: realm4Score, completed: realm4Completed },
-    { realm: realm5, score: realm5Score, completed: realm5Completed },
-  ]
 
   const completedCount = realmData.filter(r => r.completed).length
 

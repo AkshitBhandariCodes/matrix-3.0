@@ -2,6 +2,7 @@ import React, { useRef } from 'react'
 import { useGameStore, t3 } from '../store/gameStore'
 // Fixed unused import
 import { Award, ArrowLeft, Download, Share2, Star, Heart, Brain } from 'lucide-react'
+import { isRealmEnabled, type RealmScreen } from '../config/prototype'
 
 export const CertificateScreen: React.FC = () => {
   const {
@@ -12,8 +13,19 @@ export const CertificateScreen: React.FC = () => {
   const certRef = useRef<HTMLDivElement>(null)
   const tt = (hi: string, en: string, hg: string) => t3(hi, en, hg, language)
 
-  const completedCount = [realm1Completed, realm2Completed, realm3Completed, realm4Completed, realm5Completed].filter(Boolean).length
-  const totalScore = realm1Score + realm2Score + realm3Score + realm4Score + realm5Score
+  const realmProgress: Record<RealmScreen, { completed: boolean; score: number }> = {
+    realm1: { completed: realm1Completed, score: realm1Score },
+    realm2: { completed: realm2Completed, score: realm2Score },
+    realm3: { completed: realm3Completed, score: realm3Score },
+    realm4: { completed: realm4Completed, score: realm4Score },
+    realm5: { completed: realm5Completed, score: realm5Score },
+  }
+
+  const playableRealms = (Object.keys(realmProgress) as RealmScreen[])
+    .filter((realmScreen) => isRealmEnabled(realmScreen))
+  const completedCount = playableRealms.filter((realmScreen) => realmProgress[realmScreen].completed).length
+  const totalScore = playableRealms.reduce((sum, realmScreen) => sum + realmProgress[realmScreen].score, 0)
+  const playableRealmCount = playableRealms.length
   const date = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
 
   const handleDownload = async () => {
@@ -83,7 +95,7 @@ export const CertificateScreen: React.FC = () => {
       // Achievement text
       ctx.fillStyle = 'rgba(255,255,255,0.7)'
       ctx.font = '14px Inter, sans-serif'
-      ctx.fillText(`has completed ${completedCount}/5 Financial Literacy Realms`, 400, 330)
+      ctx.fillText(`has completed ${completedCount}/${playableRealmCount} Financial Literacy Realms`, 400, 330)
       ctx.fillText(`with a score of ${totalScore} points`, 400, 355)
 
       // Stats
@@ -114,9 +126,9 @@ export const CertificateScreen: React.FC = () => {
 
   const handleShare = async () => {
     const text = tt(
-      `🏆 मैंने "${playerName}" के रूप में सखी की उड़ान में ${completedCount}/5 Realms पूरे किए! Score: ${totalScore}. आप भी खेलें!`,
-      `🏆 I completed ${completedCount}/5 Realms in Sakhi Ki Udaan as "${playerName}"! Score: ${totalScore}. Play now!`,
-      `🏆 Maine "${playerName}" ke roop mein Sakhi Ki Udaan mein ${completedCount}/5 Realms complete kiye! Score: ${totalScore}. Tum bhi khelo!`,
+      `🏆 मैंने "${playerName}" के रूप में सखी की उड़ान में ${completedCount}/${playableRealmCount} Realms पूरे किए! Score: ${totalScore}. आप भी खेलें!`,
+      `🏆 I completed ${completedCount}/${playableRealmCount} Realms in Sakhi Ki Udaan as "${playerName}"! Score: ${totalScore}. Play now!`,
+      `🏆 Maine "${playerName}" ke roop mein Sakhi Ki Udaan mein ${completedCount}/${playableRealmCount} Realms complete kiye! Score: ${totalScore}. Tum bhi khelo!`,
     )
     if (navigator.share) {
       try {
@@ -186,9 +198,9 @@ export const CertificateScreen: React.FC = () => {
           </div>
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6, marginBottom: 16 }}>
             {tt(
-              `ने ${completedCount}/5 Financial Literacy Realms पूरे किए`,
-              `completed ${completedCount}/5 Financial Literacy Realms`,
-              `ne ${completedCount}/5 Financial Literacy Realms complete kiye`,
+              `ने ${completedCount}/${playableRealmCount} Financial Literacy Realms पूरे किए`,
+              `completed ${completedCount}/${playableRealmCount} Financial Literacy Realms`,
+              `ne ${completedCount}/${playableRealmCount} Financial Literacy Realms complete kiye`,
             )}
             <br />
             {tt(`कुल स्कोर: ${totalScore}`, `Total Score: ${totalScore}`, `Total Score: ${totalScore}`)}

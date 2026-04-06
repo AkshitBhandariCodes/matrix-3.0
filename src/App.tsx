@@ -11,6 +11,10 @@ import { SakhiSathi } from './screens/SakhiSathi'
 import { realm1, realm2, realm3, realm4, realm5 } from './data/realms'
 import { ShieldAlert } from 'lucide-react'
 import { preloadCriticalAudio } from './utils/speech'
+import { PROTOTYPE_MODE, isRealmEnabled, type RealmScreen as PrototypeRealmScreen } from './config/prototype'
+
+const isRealmScreen = (value: string): value is PrototypeRealmScreen =>
+  value === 'realm1' || value === 'realm2' || value === 'realm3' || value === 'realm4' || value === 'realm5'
 
 function App() {
   const { screen, transitioning, transitionColor, setScreen } = useGameStore()
@@ -18,6 +22,20 @@ function App() {
   useEffect(() => {
     void preloadCriticalAudio()
   }, [])
+
+  useEffect(() => {
+    if (!PROTOTYPE_MODE) return
+
+    // First-draft flow starts directly from the hub.
+    if (screen === 'intro') {
+      setScreen('hub')
+      return
+    }
+
+    if (isRealmScreen(screen) && !isRealmEnabled(screen)) {
+      setScreen('hub')
+    }
+  }, [screen, setScreen])
 
   const realmMap: Record<string, typeof realm1> = {
     realm1, realm2, realm3, realm4, realm5,
@@ -31,6 +49,7 @@ function App() {
       case 'intro': return <IntroScreen />
       case 'hub': return <HubScreen />
       case 'realm1': case 'realm2': case 'realm3': case 'realm4': case 'realm5':
+        if (PROTOTYPE_MODE && !isRealmEnabled(screen)) return <HubScreen />
         return <RealmScreen realm={realmMap[screen]} realmNumber={realmNumMap[screen]} />
       case 'results': case 'gameover': return <ResultsScreen />
       case 'profile': return <ProfileScreen />
@@ -41,9 +60,9 @@ function App() {
     }
   }
 
-  const isRealmScreen = screen === 'realm1' || screen === 'realm2' || screen === 'realm3' || screen === 'realm4' || screen === 'realm5'
+  const isRealmScreenNow = isRealmScreen(screen)
   // Hide siren in SHG world and keep it away from bottom dialogue on realm screens.
-  const showSiren = screen !== 'intro' && screen !== 'suraksha' && screen !== 'sakhisathi'
+  const showSiren = !PROTOTYPE_MODE && screen !== 'intro' && screen !== 'suraksha' && screen !== 'sakhisathi'
 
   return (
     <div style={{
@@ -59,7 +78,7 @@ function App() {
           className="siren-btn"
           onClick={() => setScreen('suraksha')}
           title="Suraksha Siren"
-          style={isRealmScreen ? { top: 18, right: 18, bottom: 'auto' } : undefined}
+          style={isRealmScreenNow ? { top: 18, right: 18, bottom: 'auto' } : undefined}
         >
           <ShieldAlert size={24} />
         </button>

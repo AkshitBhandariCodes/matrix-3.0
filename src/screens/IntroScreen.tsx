@@ -6,6 +6,7 @@ import {
   Gamepad2, Volume2, WifiOff, Users, GraduationCap, ChevronRight,
   Sparkles, Download
 } from 'lucide-react'
+import { PROTOTYPE_MODE } from '../config/prototype'
 
 interface DeferredInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -66,13 +67,20 @@ export const IntroScreen: React.FC = () => {
     { icon: <GraduationCap size={18} />, label: tt('खेल कर सीखो', 'Learn by Playing', 'Khel kar Seekho'), color: '#3b82f6' },
   ]
 
-  const realms = [
-    { icon: <Wallet size={16} />, label: tt('घर का खज़ाना', 'Home Budget', 'Ghar Ka Khazana'), color: '#f59e0b' },
-    { icon: <ShieldCheck size={16} />, label: tt('डिजिटल दुनिया', 'Digital Safety', 'Digital Duniya'), color: '#3b82f6' },
-    { icon: <Store size={16} />, label: tt('उद्यम की राह', 'Business Path', 'Udyam Ki Raah'), color: '#10b981' },
-    { icon: <TrendingUp size={16} />, label: tt('भविष्य की उड़ान', 'Future Flight', 'Bhavishya Ki Udaan'), color: '#9333ea' },
-    { icon: <Landmark size={16} />, label: tt('सरकारी योजनाएं', 'Govt Schemes', 'Sarkari Yojanayein'), color: '#0d9488' },
-  ]
+  const activeRealmCount = PROTOTYPE_MODE ? 2 : 5
+
+  const realms = PROTOTYPE_MODE
+    ? [
+      { icon: <Wallet size={16} />, label: tt('घर का खज़ाना', 'Home Budget', 'Ghar Ka Khazana'), color: '#f59e0b' },
+      { icon: <ShieldCheck size={16} />, label: tt('डिजिटल दुनिया', 'Digital Safety', 'Digital Duniya'), color: '#3b82f6' },
+    ]
+    : [
+      { icon: <Wallet size={16} />, label: tt('घर का खज़ाना', 'Home Budget', 'Ghar Ka Khazana'), color: '#f59e0b' },
+      { icon: <ShieldCheck size={16} />, label: tt('डिजिटल दुनिया', 'Digital Safety', 'Digital Duniya'), color: '#3b82f6' },
+      { icon: <Store size={16} />, label: tt('उद्यम की राह', 'Business Path', 'Udyam Ki Raah'), color: '#10b981' },
+      { icon: <TrendingUp size={16} />, label: tt('भविष्य की उड़ान', 'Future Flight', 'Bhavishya Ki Udaan'), color: '#9333ea' },
+      { icon: <Landmark size={16} />, label: tt('सरकारी योजनाएं', 'Govt Schemes', 'Sarkari Yojanayein'), color: '#0d9488' },
+    ]
 
   return (
     <div style={{
@@ -131,7 +139,7 @@ export const IntroScreen: React.FC = () => {
       }}>
         {[
           { val: '100M+', label: tt('SHG महिलाएं', 'SHG Women', 'SHG Women'), color: '#10b981' },
-          { val: '5', label: tt('Realms', 'Realms', 'Realms'), color: '#a78bfa' },
+          { val: String(activeRealmCount), label: tt('Realms', 'Realms', 'Realms'), color: '#a78bfa' },
           { val: '25+', label: tt('सवाल', 'Questions', 'Questions'), color: '#f59e0b' },
         ].map((s) => (
           <div key={s.label} className="glass" style={{
@@ -149,11 +157,17 @@ export const IntroScreen: React.FC = () => {
         padding: '14px 18px', maxWidth: 400, width: '100%', animation: 'fadeInUp 0.6s 0.3s ease both',
       }}>
         <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, lineHeight: 1.65, margin: 0, textAlign: 'center' }}>
-          {tt(
-            'नमस्ते! मैं सखी हूं — आपकी गाइड। पाँच realms, सरकारी योजनाओं से लेकर digital safety तक — खेल कर सीखो!',
-            "Hello! I'm Sakhi — your guide. Five realms, from government schemes to digital safety — learn by playing!",
-            "Namaste! Main Sakhi hun — tumhari guide. Paanch realms, sarkari yojanaon se lekar digital safety tak — khel kar seekho!",
-          )}
+          {PROTOTYPE_MODE
+            ? tt(
+              'नमस्ते! मैं सखी हूं — आपकी गाइड। इस first draft में 2 worlds खुले हैं: घर का खज़ाना और डिजिटल दुनिया।',
+              "Hello! I'm Sakhi — your guide. In this first draft, 2 worlds are open: Ghar Ka Khazana and Digital Duniya.",
+              'Namaste! Main Sakhi hun — tumhari guide. Is first draft mein 2 worlds khule hain: Ghar Ka Khazana aur Digital Duniya.',
+            )
+            : tt(
+              'नमस्ते! मैं सखी हूं — आपकी गाइड। पाँच realms, सरकारी योजनाओं से लेकर digital safety तक — खेल कर सीखो!',
+              "Hello! I'm Sakhi — your guide. Five realms, from government schemes to digital safety — learn by playing!",
+              'Namaste! Main Sakhi hun — tumhari guide. Paanch realms, sarkari yojanaon se lekar digital safety tak — khel kar seekho!',
+            )}
         </p>
       </div>
 

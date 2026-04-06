@@ -2,8 +2,9 @@
 import { useGameStore, t3 } from '../store/gameStore'
 import { realm1, realm2, realm3, realm4, realm5, characterImages } from '../data/realms'
 import { VirtualJoystick } from '../components/VirtualJoystick'
-import { Heart, Brain, Languages, UserCircle, Users, Award, DoorOpen, Trophy, Volume2, VolumeX, Menu, X } from 'lucide-react'
+import { Heart, Brain, Languages, Award, DoorOpen, Trophy, Volume2, VolumeX, Menu, X, Lock } from 'lucide-react'
 import hubBgImg from '../assets/environment/hub_bg.png'
+import { isRealmEnabled, type RealmScreen } from '../config/prototype'
 
 const PLAYER_SPEED = 3.5
 const GATE_RADIUS = 55
@@ -11,16 +12,19 @@ const GATE_RADIUS = 55
 interface Gate {
   x: number; y: number; color: string
   label_hi: string; label_en: string; label_hinglish: string
-  screen: 'realm1' | 'realm2' | 'realm3' | 'realm4' | 'realm5'
+  screen: RealmScreen
   completed: boolean
+  enabled: boolean
 }
 
-function drawGateIcon(ctx: CanvasRenderingContext2D, x: number, y: number, color: string, completed: boolean, tick: number, type: number) {
+function drawGateIcon(ctx: CanvasRenderingContext2D, x: number, y: number, color: string, completed: boolean, enabled: boolean, tick: number, type: number) {
+  const gateColor = enabled ? color : '#64748b'
+  const showCompleted = enabled && completed
   const pulse = Math.sin(tick * 0.04) * 10
 
   const grd = ctx.createRadialGradient(x, y, 0, x, y, GATE_RADIUS + pulse + 25)
-  grd.addColorStop(0, color + '55')
-  grd.addColorStop(0.4, color + '22')
+  grd.addColorStop(0, gateColor + '55')
+  grd.addColorStop(0.4, gateColor + '22')
   grd.addColorStop(1, 'transparent')
   ctx.fillStyle = grd
   ctx.beginPath()
@@ -30,7 +34,7 @@ function drawGateIcon(ctx: CanvasRenderingContext2D, x: number, y: number, color
   ctx.save()
   ctx.translate(x, y)
   ctx.rotate(tick * 0.015)
-  ctx.strokeStyle = color + '66'
+  ctx.strokeStyle = gateColor + '66'
   ctx.lineWidth = 2
   ctx.setLineDash([8, 8])
   ctx.beginPath()
@@ -42,19 +46,19 @@ function drawGateIcon(ctx: CanvasRenderingContext2D, x: number, y: number, color
   ctx.beginPath()
   ctx.arc(x, y, GATE_RADIUS, 0, Math.PI * 2)
   const ig = ctx.createRadialGradient(x, y, 0, x, y, GATE_RADIUS)
-  ig.addColorStop(0, color + '44')
-  ig.addColorStop(0.7, color + '18')
-  ig.addColorStop(1, color + '08')
+  ig.addColorStop(0, gateColor + '44')
+  ig.addColorStop(0.7, gateColor + '18')
+  ig.addColorStop(1, gateColor + '08')
   ctx.fillStyle = ig
   ctx.fill()
-  ctx.strokeStyle = completed ? '#4ade80cc' : color + 'cc'
+  ctx.strokeStyle = showCompleted ? '#4ade80cc' : gateColor + 'cc'
   ctx.lineWidth = 3
   ctx.stroke()
 
   ctx.save()
   ctx.translate(x, y)
-  ctx.fillStyle = color
-  ctx.strokeStyle = color
+  ctx.fillStyle = gateColor
+  ctx.strokeStyle = gateColor
   ctx.lineWidth = 2.5
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
@@ -99,7 +103,7 @@ function drawGateIcon(ctx: CanvasRenderingContext2D, x: number, y: number, color
     ctx.beginPath()
     ctx.roundRect(-16, -6, 32, 22, 4)
     ctx.fill()
-    ctx.fillStyle = color
+    ctx.fillStyle = gateColor
     ctx.strokeStyle = '#fff'
     ctx.lineWidth = 2
     ctx.globalAlpha = 0.4
@@ -118,7 +122,7 @@ function drawGateIcon(ctx: CanvasRenderingContext2D, x: number, y: number, color
     ctx.globalAlpha = 1
   } else if (type === 3) {
     // TrendingUp icon
-    ctx.strokeStyle = color
+    ctx.strokeStyle = gateColor
     ctx.lineWidth = 3
     ctx.beginPath()
     ctx.moveTo(-14, 10)
@@ -147,12 +151,12 @@ function drawGateIcon(ctx: CanvasRenderingContext2D, x: number, y: number, color
       ctx.fillRect(cx - 2, -4, 4, 16)
     }
     ctx.globalAlpha = 1
-    ctx.fillStyle = color
+    ctx.fillStyle = gateColor
     ctx.fillRect(-16, 12, 32, 4)
   }
   ctx.restore()
 
-  if (completed) {
+  if (showCompleted) {
     ctx.fillStyle = '#000'
     ctx.globalAlpha = 0.5
     ctx.beginPath()
@@ -171,6 +175,27 @@ function drawGateIcon(ctx: CanvasRenderingContext2D, x: number, y: number, color
     ctx.lineTo(x + GATE_RADIUS * 0.6 - 1, y - GATE_RADIUS * 0.6 + 4)
     ctx.lineTo(x + GATE_RADIUS * 0.6 + 6, y - GATE_RADIUS * 0.6 - 4)
     ctx.stroke()
+  }
+
+  if (!enabled) {
+    ctx.fillStyle = 'rgba(2,6,23,0.55)'
+    ctx.beginPath()
+    ctx.arc(x, y, GATE_RADIUS - 4, 0, Math.PI * 2)
+    ctx.fill()
+
+    ctx.strokeStyle = 'rgba(203,213,225,0.8)'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.arc(x, y, GATE_RADIUS - 5, 0, Math.PI * 2)
+    ctx.stroke()
+
+    ctx.strokeStyle = '#e2e8f0'
+    ctx.lineWidth = 2.5
+    ctx.beginPath()
+    ctx.arc(x, y - 4, 9, Math.PI, 0)
+    ctx.stroke()
+    ctx.fillStyle = '#e2e8f0'
+    ctx.fillRect(x - 10, y - 4, 20, 16)
   }
 }
 
@@ -223,14 +248,15 @@ export const HubScreen: React.FC = () => {
 
   // Dynamic gate positions based on world dimensions
   const getGates = useCallback((ww: number, wh: number): Gate[] => [
-    { x: (realm1.mapGateX / 100) * ww, y: (realm1.mapGateY / 100) * wh, color: realm1.color, label_hi: realm1.title_hi, label_en: realm1.title_en, label_hinglish: realm1.title_hinglish, screen: 'realm1', completed: realm1Completed },
-    { x: (realm2.mapGateX / 100) * ww, y: (realm2.mapGateY / 100) * wh, color: realm2.color, label_hi: realm2.title_hi, label_en: realm2.title_en, label_hinglish: realm2.title_hinglish, screen: 'realm2', completed: realm2Completed },
-    { x: (realm3.mapGateX / 100) * ww, y: (realm3.mapGateY / 100) * wh, color: realm3.color, label_hi: realm3.title_hi, label_en: realm3.title_en, label_hinglish: realm3.title_hinglish, screen: 'realm3', completed: realm3Completed },
-    { x: (realm4.mapGateX / 100) * ww, y: (realm4.mapGateY / 100) * wh, color: realm4.color, label_hi: realm4.title_hi, label_en: realm4.title_en, label_hinglish: realm4.title_hinglish, screen: 'realm4', completed: realm4Completed },
-    { x: (realm5.mapGateX / 100) * ww, y: (realm5.mapGateY / 100) * wh, color: realm5.color, label_hi: realm5.title_hi, label_en: realm5.title_en, label_hinglish: realm5.title_hinglish, screen: 'realm5', completed: realm5Completed },
+    { x: (realm1.mapGateX / 100) * ww, y: (realm1.mapGateY / 100) * wh, color: realm1.color, label_hi: realm1.title_hi, label_en: realm1.title_en, label_hinglish: realm1.title_hinglish, screen: 'realm1', completed: realm1Completed, enabled: isRealmEnabled('realm1') },
+    { x: (realm2.mapGateX / 100) * ww, y: (realm2.mapGateY / 100) * wh, color: realm2.color, label_hi: realm2.title_hi, label_en: realm2.title_en, label_hinglish: realm2.title_hinglish, screen: 'realm2', completed: realm2Completed, enabled: isRealmEnabled('realm2') },
+    { x: (realm3.mapGateX / 100) * ww, y: (realm3.mapGateY / 100) * wh, color: realm3.color, label_hi: realm3.title_hi, label_en: realm3.title_en, label_hinglish: realm3.title_hinglish, screen: 'realm3', completed: realm3Completed, enabled: isRealmEnabled('realm3') },
+    { x: (realm4.mapGateX / 100) * ww, y: (realm4.mapGateY / 100) * wh, color: realm4.color, label_hi: realm4.title_hi, label_en: realm4.title_en, label_hinglish: realm4.title_hinglish, screen: 'realm4', completed: realm4Completed, enabled: isRealmEnabled('realm4') },
+    { x: (realm5.mapGateX / 100) * ww, y: (realm5.mapGateY / 100) * wh, color: realm5.color, label_hi: realm5.title_hi, label_en: realm5.title_en, label_hinglish: realm5.title_hinglish, screen: 'realm5', completed: realm5Completed, enabled: isRealmEnabled('realm5') },
   ], [realm1Completed, realm2Completed, realm3Completed, realm4Completed, realm5Completed])
 
   const enterGate = useCallback((gate: Gate) => {
+    if (!gate.enabled) return
     setMapPosition({ ...posRef.current })
     startTransition(gate.color)
     setTimeout(() => setScreen(gate.screen), 800)
@@ -340,8 +366,9 @@ export const HubScreen: React.FC = () => {
 
       // Gates
       gates.forEach((gate, idx) => {
-        drawGateIcon(ctx, gate.x, gate.y, gate.color, gate.completed, tick, idx)
-        const label = tt(gate.label_hi, gate.label_en, gate.label_hinglish)
+        drawGateIcon(ctx, gate.x, gate.y, gate.color, gate.completed, gate.enabled, tick, idx)
+        const baseLabel = tt(gate.label_hi, gate.label_en, gate.label_hinglish)
+        const label = gate.enabled ? baseLabel : `${baseLabel}${tt(' • बंद', ' • Locked', ' • Locked')}`
         ctx.font = 'bold 13px Inter, sans-serif'
         ctx.textAlign = 'center'
         const lw = ctx.measureText(label).width + 16
@@ -349,7 +376,7 @@ export const HubScreen: React.FC = () => {
         ctx.beginPath()
         ctx.roundRect(gate.x - lw / 2, gate.y + GATE_RADIUS + 8, lw, 22, 11)
         ctx.fill()
-        ctx.fillStyle = '#fff'
+        ctx.fillStyle = gate.enabled ? '#fff' : '#cbd5e1'
         ctx.fillText(label, gate.x, gate.y + GATE_RADIUS + 23)
         ctx.textAlign = 'left'
       })
@@ -399,15 +426,21 @@ export const HubScreen: React.FC = () => {
 
       // Proximity hint
       if (closestGate) {
-        const hint = tt(
-          `${closestGate.label_hi} में जाओ`,
-          `Enter ${closestGate.label_en}`,
-          `${closestGate.label_hinglish} mein jaao`,
-        )
+        const hint = closestGate.enabled
+          ? tt(
+            `${closestGate.label_hi} में जाओ`,
+            `Enter ${closestGate.label_en}`,
+            `${closestGate.label_hinglish} mein jaao`,
+          )
+          : tt(
+            'यह realm अभी बंद है',
+            'This realm is locked for first draft',
+            'Yeh realm abhi locked hai',
+          )
         ctx.font = 'bold 13px Inter, sans-serif'
         const hw = ctx.measureText(hint).width + 24
-        ctx.fillStyle = closestGate.color
-        ctx.shadowColor = closestGate.color; ctx.shadowBlur = 12
+        ctx.fillStyle = closestGate.enabled ? closestGate.color : '#64748b'
+        ctx.shadowColor = closestGate.enabled ? closestGate.color : '#64748b'; ctx.shadowBlur = 12
         ctx.beginPath()
         ctx.roundRect(closestGate.x - hw / 2, closestGate.y - GATE_RADIUS - 44, hw, 28, 14)
         ctx.fill()
@@ -426,7 +459,17 @@ export const HubScreen: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [language, realm1Completed, realm2Completed, realm3Completed, realm4Completed, realm5Completed])
 
-  const allDone = realm1Completed && realm2Completed && realm3Completed && realm4Completed && realm5Completed
+  const realmCompletion: Record<RealmScreen, boolean> = {
+    realm1: realm1Completed,
+    realm2: realm2Completed,
+    realm3: realm3Completed,
+    realm4: realm4Completed,
+    realm5: realm5Completed,
+  }
+
+  const allDone = (Object.keys(realmCompletion) as RealmScreen[])
+    .filter((realmScreen) => isRealmEnabled(realmScreen))
+    .every((realmScreen) => realmCompletion[realmScreen])
 
   const handleJoystickMove = useCallback((dx: number, dy: number) => {
     joystickRef.current = { dx, dy }
@@ -451,7 +494,7 @@ export const HubScreen: React.FC = () => {
     if (tappedGate) {
       nearGateRef.current = tappedGate
       setNearGate(tappedGate)
-      enterGate(tappedGate)
+      if (tappedGate.enabled) enterGate(tappedGate)
       return
     }
 
@@ -531,24 +574,6 @@ export const HubScreen: React.FC = () => {
                 padding: 8, display: 'flex', flexDirection: 'column', gap: 6,
                 borderRadius: 12,
               }}>
-                <button onClick={() => { setScreen('sakhisathi'); setMenuOpen(false) }} style={{
-                  background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.45)',
-                  borderRadius: 9, color: '#10b981', fontSize: 12, fontWeight: 800,
-                  padding: '8px 10px', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', gap: 6,
-                }}>
-                  <Users size={14} /> SHG
-                </button>
-
-                <button onClick={() => { setScreen('profile'); setMenuOpen(false) }} style={{
-                  background: 'rgba(167,139,250,0.2)', border: '1px solid rgba(167,139,250,0.45)',
-                  borderRadius: 9, color: '#a78bfa', fontSize: 12, fontWeight: 800,
-                  padding: '8px 10px', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', gap: 6,
-                }}>
-                  <UserCircle size={14} /> {tt('प्रोफाइल', 'Profile', 'Profile')}
-                </button>
-
                 <button onClick={() => { setScreen('certificate'); setMenuOpen(false) }} style={{
                   background: 'rgba(253,230,138,0.2)', border: '1px solid rgba(253,230,138,0.45)',
                   borderRadius: 9, color: '#fde68a', fontSize: 12, fontWeight: 800,
@@ -582,15 +607,6 @@ export const HubScreen: React.FC = () => {
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 6, pointerEvents: 'all' }}>
-            <button onClick={() => setScreen('sakhisathi')} style={{
-              background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)',
-              border: '1px solid rgba(16,185,129,0.3)', borderRadius: 10,
-              color: '#10b981', fontSize: 11, fontWeight: 800, padding: '6px 10px',
-              cursor: 'pointer', fontFamily: 'var(--font-primary)',
-              display: 'flex', alignItems: 'center', gap: 4,
-            }}>
-              <Users size={14} /> SHG
-            </button>
             <button onClick={() => setScreen('certificate')} style={{
               background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)',
               border: '1px solid rgba(253,230,138,0.3)', borderRadius: 10,
@@ -609,14 +625,6 @@ export const HubScreen: React.FC = () => {
             }}>
               {voiceMode ? <Volume2 size={14} /> : <VolumeX size={14} />}
             </button>
-            <button onClick={() => setScreen('profile')} style={{
-              background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)',
-              border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10,
-              color: '#a78bfa', padding: '6px 8px',
-              cursor: 'pointer', display: 'flex', alignItems: 'center',
-            }}>
-              <UserCircle size={14} />
-            </button>
             <button onClick={cycleLang} style={{
               background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)',
               border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10,
@@ -634,15 +642,25 @@ export const HubScreen: React.FC = () => {
         <div style={{
           position: 'absolute', bottom: isMobileView ? 170 : 160, left: '50%', transform: 'translateX(-50%)', zIndex: 20,
         }}>
-          <button onClick={enterNearGate} className="btn-primary" style={{
-            background: nearGate.color, fontSize: 14, padding: '12px 24px',
-            boxShadow: `0 6px 28px ${nearGate.color}88`,
-            animation: isMobileView ? 'none' : 'bounceBtn 0.8s ease-in-out infinite alternate',
-          }}>
-            <DoorOpen size={18} />
-            {tt(nearGate.label_hi, nearGate.label_en, nearGate.label_hinglish)}
-            {tt(' → जाओ', ' → Enter', ' → Jaao')}
-          </button>
+          {nearGate.enabled ? (
+            <button onClick={enterNearGate} className="btn-primary" style={{
+              background: nearGate.color, fontSize: 14, padding: '12px 24px',
+              boxShadow: `0 6px 28px ${nearGate.color}88`,
+              animation: isMobileView ? 'none' : 'bounceBtn 0.8s ease-in-out infinite alternate',
+            }}>
+              <DoorOpen size={18} />
+              {tt(nearGate.label_hi, nearGate.label_en, nearGate.label_hinglish)}
+              {tt(' → जाओ', ' → Enter', ' → Jaao')}
+            </button>
+          ) : (
+            <div className="glass-strong" style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '10px 16px', color: '#cbd5e1', fontSize: 13, fontWeight: 700,
+              border: '1px solid rgba(203,213,225,0.35)',
+            }}>
+              <Lock size={15} /> {tt('यह realm locked है', 'This realm is locked', 'Yeh realm locked hai')}
+            </div>
+          )}
         </div>
       )}
 

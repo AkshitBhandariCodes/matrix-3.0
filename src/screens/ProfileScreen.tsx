@@ -2,6 +2,7 @@ import React from 'react'
 import { useGameStore, t3 } from '../store/gameStore'
 import { realm1, realm2, realm3, realm4, realm5, characterImages } from '../data/realms'
 import { ArrowLeft, Heart, Brain, Star, CheckCircle2, Lock, Award, Users, ShieldAlert } from 'lucide-react'
+import { isRealmEnabled, type RealmScreen } from '../config/prototype'
 
 export const ProfileScreen: React.FC = () => {
   const {
@@ -12,18 +13,21 @@ export const ProfileScreen: React.FC = () => {
 
   const tt = (hi: string, en: string, hg: string) => t3(hi, en, hg, language)
 
-  const realmsData = [
-    { realm: realm1, completed: realm1Completed, score: realm1Score },
-    { realm: realm2, completed: realm2Completed, score: realm2Score },
-    { realm: realm3, completed: realm3Completed, score: realm3Score },
-    { realm: realm4, completed: realm4Completed, score: realm4Score },
-    { realm: realm5, completed: realm5Completed, score: realm5Score },
+  const allRealmsData: Array<{ screen: RealmScreen; realm: typeof realm1; completed: boolean; score: number }> = [
+    { screen: 'realm1', realm: realm1, completed: realm1Completed, score: realm1Score },
+    { screen: 'realm2', realm: realm2, completed: realm2Completed, score: realm2Score },
+    { screen: 'realm3', realm: realm3, completed: realm3Completed, score: realm3Score },
+    { screen: 'realm4', realm: realm4, completed: realm4Completed, score: realm4Score },
+    { screen: 'realm5', realm: realm5, completed: realm5Completed, score: realm5Score },
   ]
+
+  const realmsData = allRealmsData.filter((item) => isRealmEnabled(item.screen))
 
   const totalScore = realmsData.reduce((acc, curr) => acc + curr.score, 0)
   const completedCount = realmsData.filter(r => r.completed).length
-  const allMaxScore = 15 * 5 * 5
-  const percentage = Math.round((totalScore / allMaxScore) * 100) || 0
+  const allMaxScore = realmsData.reduce((acc, curr) => acc + curr.realm.challenges.length * 15, 0)
+  const percentage = allMaxScore > 0 ? Math.round((totalScore / allMaxScore) * 100) : 0
+  const playableRealmCount = realmsData.length
 
   return (
     <div style={{
@@ -55,7 +59,7 @@ export const ProfileScreen: React.FC = () => {
         <div style={{ textAlign: 'center' }}>
           <h2 style={{ fontSize: 24, fontWeight: 900, margin: 0, color: '#fff' }}>{playerName}</h2>
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', fontWeight: 600, marginTop: 4 }}>
-            {completedCount} / 5 {tt('पड़ाव पूरे किए', 'Realms Completed', 'Realms Poore Kiye')}
+            {completedCount} / {playableRealmCount} {tt('पड़ाव पूरे किए', 'Realms Completed', 'Realms Poore Kiye')}
           </div>
         </div>
       </div>
