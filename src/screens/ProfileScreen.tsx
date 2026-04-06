@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { useGameStore, t3 } from '../store/gameStore'
 import { realm1, realm2, realm3, realm4, realm5, characterImages } from '../data/realms'
 import { ArrowLeft, Heart, Brain, Star, CheckCircle2, Lock, Award, Users, ShieldAlert } from 'lucide-react'
@@ -6,12 +6,26 @@ import { isRealmEnabled, type RealmScreen } from '../config/prototype'
 
 export const ProfileScreen: React.FC = () => {
   const {
-    playerName, stats, language, setScreen,
+    playerName, stats, language, setScreen, setPlayerName,
     realm1Completed, realm2Completed, realm3Completed, realm4Completed, realm5Completed,
     realm1Score, realm2Score, realm3Score, realm4Score, realm5Score,
   } = useGameStore()
+  const [nameInput, setNameInput] = useState(playerName || '')
+  const [nameSaved, setNameSaved] = useState(false)
 
   const tt = (hi: string, en: string, hg: string) => t3(hi, en, hg, language)
+
+  useEffect(() => {
+    setNameInput(playerName || '')
+  }, [playerName])
+
+  const handleSaveName = () => {
+    const finalName = nameInput.trim() || 'Meera'
+    setPlayerName(finalName)
+    setNameInput(finalName)
+    setNameSaved(true)
+    setTimeout(() => setNameSaved(false), 1500)
+  }
 
   const allRealmsData: Array<{ screen: RealmScreen; realm: typeof realm1; completed: boolean; score: number }> = [
     { screen: 'realm1', realm: realm1, completed: realm1Completed, score: realm1Score },
@@ -28,6 +42,7 @@ export const ProfileScreen: React.FC = () => {
   const allMaxScore = realmsData.reduce((acc, curr) => acc + curr.realm.challenges.length * 15, 0)
   const percentage = allMaxScore > 0 ? Math.round((totalScore / allMaxScore) * 100) : 0
   const playableRealmCount = realmsData.length
+  const completionPercentage = playableRealmCount > 0 ? Math.round((completedCount / playableRealmCount) * 100) : 0
 
   return (
     <div style={{
@@ -57,10 +72,77 @@ export const ProfileScreen: React.FC = () => {
           <img src={characterImages.sakhi} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top' }} />
         </div>
         <div style={{ textAlign: 'center' }}>
-          <h2 style={{ fontSize: 24, fontWeight: 900, margin: 0, color: '#fff' }}>{playerName}</h2>
+          <h2 style={{ fontSize: 24, fontWeight: 900, margin: 0, color: '#fff' }}>{playerName || 'Meera'}</h2>
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', fontWeight: 600, marginTop: 4 }}>
             {completedCount} / {playableRealmCount} {tt('पड़ाव पूरे किए', 'Realms Completed', 'Realms Poore Kiye')}
           </div>
+        </div>
+      </div>
+
+      {/* Edit Name */}
+      <div className="glass" style={{
+        width: '100%', maxWidth: 440, padding: '12px',
+        display: 'flex', gap: 8, alignItems: 'center',
+        animation: 'fadeInUp 0.5s 0.15s ease both',
+      }}>
+        <input
+          value={nameInput}
+          onChange={(e) => setNameInput(e.target.value)}
+          placeholder={tt('नाम बदलें', 'Change name', 'Naam badlo')}
+          onKeyDown={(e) => e.key === 'Enter' && handleSaveName()}
+          style={{
+            flex: 1,
+            padding: '10px 12px',
+            borderRadius: 10,
+            border: '1px solid rgba(255,255,255,0.16)',
+            background: 'rgba(255,255,255,0.04)',
+            color: '#fff',
+            fontSize: 13,
+            fontWeight: 600,
+            outline: 'none',
+            fontFamily: 'var(--font-primary)',
+          }}
+        />
+        <button onClick={handleSaveName} className="btn-primary" style={{ padding: '10px 14px', fontSize: 12 }}>
+          {tt('सेव', 'Save', 'Save')}
+        </button>
+      </div>
+
+      {nameSaved && (
+        <div style={{ fontSize: 11, color: '#4ade80', fontWeight: 700, marginTop: -8 }}>
+          {tt('नाम अपडेट हो गया', 'Name updated', 'Naam update ho gaya')}
+        </div>
+      )}
+
+      {/* Realm completion progress */}
+      <div className="glass" style={{
+        width: '100%', maxWidth: 440, padding: '14px 14px 12px',
+        animation: 'fadeInUp 0.5s 0.18s ease both',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', fontWeight: 800 }}>
+            {tt('Realm प्रगति', 'Realm Progress', 'Realm Progress')}
+          </span>
+          <span style={{ fontSize: 12, color: '#a78bfa', fontWeight: 900 }}>{completionPercentage}%</span>
+        </div>
+        <div style={{
+          width: '100%',
+          height: 10,
+          borderRadius: 999,
+          background: 'rgba(255,255,255,0.08)',
+          overflow: 'hidden',
+          border: '1px solid rgba(255,255,255,0.1)',
+        }}>
+          <div style={{
+            width: `${completionPercentage}%`,
+            height: '100%',
+            borderRadius: 999,
+            background: 'linear-gradient(90deg, #22c55e, #a3e635)',
+            transition: 'width 300ms ease',
+          }} />
+        </div>
+        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 8, fontWeight: 700 }}>
+          {tt('पूरा किया:', 'Completed:', 'Completed:')} {completedCount}/{playableRealmCount} {tt('Realms', 'Realms', 'Realms')}
         </div>
       </div>
 
