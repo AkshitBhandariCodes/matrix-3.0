@@ -67,7 +67,7 @@ const initialStats: PlayerStats = {
 const clamp = (val: number) => Math.max(0, Math.min(100, val))
 
 export const useGameStore = create<GameState>()(persist((set, get) => ({
-  screen: 'hub',
+  screen: 'intro',
   playerName: '',
   language: 'hinglish',
   stats: { ...initialStats },
@@ -146,7 +146,7 @@ export const useGameStore = create<GameState>()(persist((set, get) => ({
 
   resetGame: () =>
     set({
-      screen: 'hub',
+      screen: 'intro',
       stats: { ...initialStats },
       mapPosition: { x: 450, y: 300 },
       realm1Completed: false,

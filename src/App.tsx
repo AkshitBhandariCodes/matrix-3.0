@@ -26,12 +26,6 @@ function App() {
   useEffect(() => {
     if (!PROTOTYPE_MODE) return
 
-    // First-draft flow starts directly from the hub.
-    if (screen === 'intro') {
-      setScreen('hub')
-      return
-    }
-
     if (isRealmScreen(screen) && !isRealmEnabled(screen)) {
       setScreen('hub')
     }
