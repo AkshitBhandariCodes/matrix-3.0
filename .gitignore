@@ -1,0 +1,50 @@
+# Logs
+logs
+*.log
+*.err
+*.pid
+build_output.txt
+build_error.txt
+ts_errors.txt
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# TypeScript / Vite cache
+*.tsbuildinfo
+.vite
+
+# Test and coverage artifacts
+coverage
+.nyc_output
+
+# OS temporary files
+Thumbs.db
+desktop.ini
+
+# Misc temp files
+*.tmp
+*.temp
