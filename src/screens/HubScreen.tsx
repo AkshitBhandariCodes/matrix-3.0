@@ -11,6 +11,7 @@ const GATE_RADIUS = 55
 
 interface Gate {
   x: number; y: number; color: string
+  realmNumber: number
   label_hi: string; label_en: string; label_hinglish: string
   screen: RealmScreen
   completed: boolean
@@ -248,12 +249,20 @@ export const HubScreen: React.FC = () => {
 
   // Dynamic gate positions based on world dimensions
   const getGates = useCallback((ww: number, wh: number): Gate[] => [
-    { x: (realm1.mapGateX / 100) * ww, y: (realm1.mapGateY / 100) * wh, color: realm1.color, label_hi: realm1.title_hi, label_en: realm1.title_en, label_hinglish: realm1.title_hinglish, screen: 'realm1', completed: realm1Completed, enabled: isRealmEnabled('realm1') },
-    { x: (realm2.mapGateX / 100) * ww, y: (realm2.mapGateY / 100) * wh, color: realm2.color, label_hi: realm2.title_hi, label_en: realm2.title_en, label_hinglish: realm2.title_hinglish, screen: 'realm2', completed: realm2Completed, enabled: isRealmEnabled('realm2') },
-    { x: (realm3.mapGateX / 100) * ww, y: (realm3.mapGateY / 100) * wh, color: realm3.color, label_hi: realm3.title_hi, label_en: realm3.title_en, label_hinglish: realm3.title_hinglish, screen: 'realm3', completed: realm3Completed, enabled: isRealmEnabled('realm3') },
-    { x: (realm4.mapGateX / 100) * ww, y: (realm4.mapGateY / 100) * wh, color: realm4.color, label_hi: realm4.title_hi, label_en: realm4.title_en, label_hinglish: realm4.title_hinglish, screen: 'realm4', completed: realm4Completed, enabled: isRealmEnabled('realm4') },
-    { x: (realm5.mapGateX / 100) * ww, y: (realm5.mapGateY / 100) * wh, color: realm5.color, label_hi: realm5.title_hi, label_en: realm5.title_en, label_hinglish: realm5.title_hinglish, screen: 'realm5', completed: realm5Completed, enabled: isRealmEnabled('realm5') },
+    { x: (realm1.mapGateX / 100) * ww, y: (realm1.mapGateY / 100) * wh, color: realm1.color, realmNumber: 1, label_hi: realm1.title_hi, label_en: realm1.title_en, label_hinglish: realm1.title_hinglish, screen: 'realm1', completed: realm1Completed, enabled: isRealmEnabled('realm1') },
+    { x: (realm2.mapGateX / 100) * ww, y: (realm2.mapGateY / 100) * wh, color: realm2.color, realmNumber: 2, label_hi: realm2.title_hi, label_en: realm2.title_en, label_hinglish: realm2.title_hinglish, screen: 'realm2', completed: realm2Completed, enabled: isRealmEnabled('realm2') },
+    { x: (realm3.mapGateX / 100) * ww, y: (realm3.mapGateY / 100) * wh, color: realm3.color, realmNumber: 3, label_hi: realm3.title_hi, label_en: realm3.title_en, label_hinglish: realm3.title_hinglish, screen: 'realm3', completed: realm3Completed, enabled: isRealmEnabled('realm3') },
+    { x: (realm4.mapGateX / 100) * ww, y: (realm4.mapGateY / 100) * wh, color: realm4.color, realmNumber: 4, label_hi: realm4.title_hi, label_en: realm4.title_en, label_hinglish: realm4.title_hinglish, screen: 'realm4', completed: realm4Completed, enabled: isRealmEnabled('realm4') },
+    { x: (realm5.mapGateX / 100) * ww, y: (realm5.mapGateY / 100) * wh, color: realm5.color, realmNumber: 5, label_hi: realm5.title_hi, label_en: realm5.title_en, label_hinglish: realm5.title_hinglish, screen: 'realm5', completed: realm5Completed, enabled: isRealmEnabled('realm5') },
   ], [realm1Completed, realm2Completed, realm3Completed, realm4Completed, realm5Completed])
+
+  const realmLegend = [
+    { realmNumber: 1, label_hi: realm1.title_hi, label_en: realm1.title_en, label_hinglish: realm1.title_hinglish, color: realm1.color, enabled: isRealmEnabled('realm1') },
+    { realmNumber: 2, label_hi: realm2.title_hi, label_en: realm2.title_en, label_hinglish: realm2.title_hinglish, color: realm2.color, enabled: isRealmEnabled('realm2') },
+    { realmNumber: 3, label_hi: realm3.title_hi, label_en: realm3.title_en, label_hinglish: realm3.title_hinglish, color: realm3.color, enabled: isRealmEnabled('realm3') },
+    { realmNumber: 4, label_hi: realm4.title_hi, label_en: realm4.title_en, label_hinglish: realm4.title_hinglish, color: realm4.color, enabled: isRealmEnabled('realm4') },
+    { realmNumber: 5, label_hi: realm5.title_hi, label_en: realm5.title_en, label_hinglish: realm5.title_hinglish, color: realm5.color, enabled: isRealmEnabled('realm5') },
+  ]
 
   const enterGate = useCallback((gate: Gate) => {
     if (!gate.enabled) return
@@ -367,7 +376,7 @@ export const HubScreen: React.FC = () => {
       // Gates
       gates.forEach((gate, idx) => {
         drawGateIcon(ctx, gate.x, gate.y, gate.color, gate.completed, gate.enabled, tick, idx)
-        const baseLabel = tt(gate.label_hi, gate.label_en, gate.label_hinglish)
+        const baseLabel = `${gate.realmNumber}. ${tt(gate.label_hi, gate.label_en, gate.label_hinglish)}`
         const label = gate.enabled ? baseLabel : `${baseLabel}${tt(' • बंद', ' • Locked', ' • Locked')}`
         ctx.font = 'bold 13px Inter, sans-serif'
         ctx.textAlign = 'center'
@@ -712,6 +721,39 @@ export const HubScreen: React.FC = () => {
         )}
       </div>
 
+      <div style={{
+        position: 'absolute', top: isMobileView ? 66 : 72, left: 12, right: 12,
+        zIndex: 9, pointerEvents: 'none',
+      }}>
+        <div className="glass-strong" style={{
+          padding: isMobileView ? '6px 8px' : '8px 10px',
+          display: 'flex', gap: 6, flexWrap: 'wrap',
+        }}>
+          {realmLegend.map((realm) => {
+            const label = `${realm.realmNumber}. ${tt(realm.label_hi, realm.label_en, realm.label_hinglish)}`
+            return (
+              <div key={realm.realmNumber} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '4px 7px', borderRadius: 999,
+                border: `1px solid ${realm.enabled ? `${realm.color}66` : 'rgba(148,163,184,0.55)'}`,
+                background: realm.enabled ? `${realm.color}20` : 'rgba(100,116,139,0.22)',
+                color: realm.enabled ? '#f8fafc' : '#cbd5e1',
+                fontSize: isMobileView ? 10 : 11,
+                fontWeight: 800,
+                maxWidth: isMobileView ? '100%' : undefined,
+              }}>
+                <span style={{
+                  width: 6, height: 6, borderRadius: '50%',
+                  background: realm.enabled ? realm.color : '#94a3b8',
+                  flexShrink: 0,
+                }} />
+                <span>{label}</span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
       {nearGate && (
         <div style={{
           position: 'absolute', bottom: isMobileView ? 170 : 160, left: '50%', transform: 'translateX(-50%)', zIndex: 20,
@@ -723,7 +765,7 @@ export const HubScreen: React.FC = () => {
               animation: isMobileView ? 'none' : 'bounceBtn 0.8s ease-in-out infinite alternate',
             }}>
               <DoorOpen size={18} />
-              {tt(nearGate.label_hi, nearGate.label_en, nearGate.label_hinglish)}
+              {`${nearGate.realmNumber}. ${tt(nearGate.label_hi, nearGate.label_en, nearGate.label_hinglish)}`}
               {tt(' → जाओ', ' → Enter', ' → Jaao')}
             </button>
           ) : (
