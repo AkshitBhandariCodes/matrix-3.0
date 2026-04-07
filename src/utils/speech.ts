@@ -38,6 +38,12 @@ export const SAKHI_PHRASES = [
 ]
 
 let activeAudio: HTMLAudioElement | null = null
+let hasUserActivatedAudio = false
+let speechQueue: Promise<void> = Promise.resolve()
+const inflightAudioRequests = new Map<string, Promise<Blob | null>>()
+type UserActivationState = {
+  hasBeenActive?: boolean
+}
 
 const HINDI_SPEECH_REPLACEMENTS: Array<{ pattern: RegExp; replacement: string }> = [
   { pattern: /\bSHG\b/gi, replacement: 'एस एच जी' },
@@ -139,6 +145,35 @@ function stopActiveAudio() {
   activeAudio.pause()
   activeAudio.currentTime = 0
   activeAudio = null
+}
+
+function hasUserActivatedOnce() {
+  if (hasUserActivatedAudio) return true
+
+  if (typeof navigator !== 'undefined') {
+    const userActivation = (navigator as Navigator & { userActivation?: UserActivationState }).userActivation
+    if (userActivation?.hasBeenActive) {
+      hasUserActivatedAudio = true
+      return true
+    }
+  }
+
+  return false
+}
+
+function ensureAudioActivationListeners() {
+  if (typeof window === 'undefined' || hasUserActivatedOnce()) return
+
+  const activate = () => {
+    hasUserActivatedAudio = true
+    window.removeEventListener('pointerdown', activate, true)
+    window.removeEventListener('keydown', activate, true)
+    window.removeEventListener('touchstart', activate, true)
+  }
+
+  window.addEventListener('pointerdown', activate, true)
+  window.addEventListener('keydown', activate, true)
+  window.addEventListener('touchstart', activate, true)
 }
 
 function normalizeSpeechTextForLang(text: string, lang: SpeechLang): string {
@@ -275,57 +310,83 @@ async function requestGeminiAudio(
 ): Promise<Blob | null> {
   if (!hasGeminiTtsConfig()) return null
 
+  const requestKey = cacheKeyForText(text, lang, emotion)
+
   if (cacheable) {
     const cached = await getCachedAudio(text, lang, emotion)
     if (cached) return cached
   }
 
-  const response = await fetch(`${GEMINI_API_BASE_URL}/models/${encodeURIComponent(GEMINI_TTS_MODEL)}:generateContent`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': GEMINI_API_KEY,
-    },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
+  const existingRequest = inflightAudioRequests.get(requestKey)
+  if (existingRequest) {
+    return existingRequest
+  }
+
+  const requestPromise = (async () => {
+    let lastError: Error | null = null
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const response = await fetch(`${GEMINI_API_BASE_URL}/models/${encodeURIComponent(GEMINI_TTS_MODEL)}:generateContent`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': GEMINI_API_KEY,
+        },
+        body: JSON.stringify({
+          contents: [
             {
-              text: buildGeminiTtsPrompt(text, lang, emotion),
+              parts: [
+                {
+                  text: buildGeminiTtsPrompt(text, lang, emotion),
+                },
+              ],
             },
           ],
-        },
-      ],
-      generationConfig: {
-        responseModalities: ['AUDIO'],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: {
-              voiceName: GEMINI_TTS_VOICE,
+          generationConfig: {
+            responseModalities: ['AUDIO'],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: {
+                  voiceName: GEMINI_TTS_VOICE,
+                },
+              },
             },
           },
-        },
-      },
-    }),
-  })
+        }),
+      })
 
-  if (!response.ok) {
-    throw new Error(`Gemini TTS failed with status ${response.status}`)
+      if (response.ok) {
+        const json = await response.json()
+        const base64Audio = extractGeminiAudioBase64(json)
+        if (!base64Audio) {
+          throw new Error('Gemini TTS returned no audio payload')
+        }
+
+        const blob = pcmToWavBlob(base64ToBytes(base64Audio))
+        if (cacheable) {
+          void cacheAudio(text, lang, emotion, blob)
+        }
+        return blob
+      }
+
+      lastError = new Error(`Gemini TTS failed with status ${response.status}`)
+      if (response.status !== 429 && response.status < 500) {
+        break
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, 900 * (attempt + 1)))
+    }
+
+    throw lastError ?? new Error('Gemini TTS failed')
+  })()
+
+  inflightAudioRequests.set(requestKey, requestPromise)
+
+  try {
+    return await requestPromise
+  } finally {
+    inflightAudioRequests.delete(requestKey)
   }
-
-  const json = await response.json()
-  const base64Audio = extractGeminiAudioBase64(json)
-  if (!base64Audio) {
-    throw new Error('Gemini TTS returned no audio payload')
-  }
-
-  const blob = pcmToWavBlob(base64ToBytes(base64Audio))
-
-  if (cacheable) {
-    void cacheAudio(text, lang, emotion, blob)
-  }
-
-  return blob
 }
 
 async function playAudioBlob(blob: Blob, speed = 1): Promise<HTMLAudioElement | null> {
@@ -335,6 +396,8 @@ async function playAudioBlob(blob: Blob, speed = 1): Promise<HTMLAudioElement | 
   const audio = new Audio(audioUrl)
   activeAudio = audio
   audio.preload = 'auto'
+  audio.setAttribute('playsinline', 'true')
+  audio.setAttribute('webkit-playsinline', 'true')
   audio.playbackRate = clamp(speed, 0.75, 1.25)
 
   const cleanup = () => {
@@ -380,6 +443,8 @@ export async function sakhiSpeak(
   const speechText = normalizeSpeechTextForLang(cleanText, lang)
   if (!speechText) return null
 
+  ensureAudioActivationListeners()
+
   if (interrupt !== false) {
     stopSpeaking()
   }
@@ -388,16 +453,25 @@ export async function sakhiSpeak(
     return null
   }
 
-  try {
-    const blob = await requestGeminiAudio(speechText, { lang, emotion, cacheable })
-    if (!blob) return null
-    return await playAudioBlob(blob, speed)
-  } catch {
-    if (import.meta.env.DEV) {
-      console.warn('Gemini TTS unavailable')
-    }
+  if (!hasUserActivatedOnce()) {
     return null
   }
+
+  let playedAudio: HTMLAudioElement | null = null
+  speechQueue = speechQueue.then(async () => {
+    try {
+      const blob = await requestGeminiAudio(speechText, { lang, emotion, cacheable })
+      if (!blob) return
+      playedAudio = await playAudioBlob(blob, speed)
+    } catch {
+      if (import.meta.env.DEV) {
+        console.warn('Gemini TTS unavailable')
+      }
+    }
+  })
+
+  await speechQueue
+  return playedAudio
 }
 
 export function speak(text: string, lang: SpeechLang, options: SpeakOptions = {}) {
@@ -413,13 +487,5 @@ export function stopSpeaking() {
 }
 
 export async function preloadCriticalAudio() {
-  if (!isOnline() || !hasGeminiTtsConfig()) return
-
-  for (const phrase of SAKHI_PHRASES) {
-    try {
-      await requestGeminiAudio(phrase, { lang: 'hinglish', emotion: 'friendly', cacheable: true })
-    } catch {
-      // Ignore preload failures; runtime handles unavailable audio.
-    }
-  }
+  // Disabled to avoid spending TTS quota before the user interacts.
 }
