@@ -13,7 +13,7 @@ interface SpeakOptions {
 }
 
 export interface VoiceEngineInfo {
-  provider: 'gemini-tts' | 'disabled'
+  provider: 'gemini-tts' | 'web-speech' | 'disabled'
   online: boolean
   apiConfigured: boolean
   voiceId: string
@@ -28,6 +28,8 @@ const GEMINI_TTS_VOICE = (import.meta.env.VITE_GEMINI_TTS_VOICE as string | unde
 const SAKHI_AUDIO_CACHE = 'sakhi-audio-v3'
 const SAKHI_AUDIO_CACHE_LIMIT_BYTES = 8 * 1024 * 1024
 const GEMINI_TTS_SAMPLE_RATE = 24000
+const GEMINI_TTS_LOCK_KEY = 'sakhi-gemini-tts-lock-until'
+const TRANSIENT_TTS_LOCK_MS = 30 * 1000
 
 export const SAKHI_PHRASES = [
   'Namaste Sakhi!',
@@ -38,8 +40,12 @@ export const SAKHI_PHRASES = [
 ]
 
 let activeAudio: HTMLAudioElement | null = null
+let activeUtterance: SpeechSynthesisUtterance | null = null
 let hasUserActivatedAudio = false
 let speechQueue: Promise<void> = Promise.resolve()
+let latestSpeechToken = 0
+let activeSpeechAbortController: AbortController | null = null
+let geminiTtsLockedUntil = readGeminiTtsLockUntil()
 const inflightAudioRequests = new Map<string, Promise<Blob | null>>()
 type UserActivationState = {
   hasBeenActive?: boolean
@@ -68,6 +74,51 @@ function hasGeminiTtsConfig() {
 
 function canUseCacheApi() {
   return typeof window !== 'undefined' && 'caches' in window
+}
+
+function canUseWebSpeech() {
+  return typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined'
+}
+
+function canUseLocalStorage() {
+  return typeof window !== 'undefined' && 'localStorage' in window
+}
+
+function readGeminiTtsLockUntil() {
+  if (!canUseLocalStorage()) return 0
+
+  const rawValue = window.localStorage.getItem(GEMINI_TTS_LOCK_KEY)
+  const lockUntil = rawValue ? Number(rawValue) : 0
+  return Number.isFinite(lockUntil) ? lockUntil : 0
+}
+
+function setGeminiTtsLockUntil(lockUntil: number) {
+  geminiTtsLockedUntil = lockUntil
+
+  if (!canUseLocalStorage()) return
+
+  if (lockUntil > Date.now()) {
+    window.localStorage.setItem(GEMINI_TTS_LOCK_KEY, String(lockUntil))
+  } else {
+    window.localStorage.removeItem(GEMINI_TTS_LOCK_KEY)
+  }
+}
+
+function getNextLocalMidnightTimestamp() {
+  const nextMidnight = new Date()
+  nextMidnight.setHours(24, 0, 0, 0)
+  return nextMidnight.getTime()
+}
+
+function isGeminiTtsLocked() {
+  if (geminiTtsLockedUntil <= Date.now()) {
+    if (geminiTtsLockedUntil !== 0) {
+      setGeminiTtsLockUntil(0)
+    }
+    return false
+  }
+
+  return true
 }
 
 function cacheKeyForText(text: string, lang: SpeechLang, emotion: SpeakEmotion) {
@@ -145,6 +196,18 @@ function stopActiveAudio() {
   activeAudio.pause()
   activeAudio.currentTime = 0
   activeAudio = null
+}
+
+function stopActiveUtterance() {
+  if (!canUseWebSpeech()) return
+  window.speechSynthesis.cancel()
+  activeUtterance = null
+}
+
+function stopActiveSpeechRequest() {
+  if (!activeSpeechAbortController) return
+  activeSpeechAbortController.abort()
+  activeSpeechAbortController = null
 }
 
 function hasUserActivatedOnce() {
@@ -229,6 +292,104 @@ function buildGeminiTtsPrompt(text: string, lang: SpeechLang, emotion: SpeakEmot
   ].join('\n')
 }
 
+async function getAvailableBrowserVoices() {
+  if (!canUseWebSpeech()) return []
+
+  const synth = window.speechSynthesis
+  const loadedVoices = synth.getVoices()
+  if (loadedVoices.length > 0) return loadedVoices
+
+  return new Promise<SpeechSynthesisVoice[]>((resolve) => {
+    const handleVoicesChanged = () => {
+      window.clearTimeout(timeoutId)
+      synth.removeEventListener('voiceschanged', handleVoicesChanged)
+      resolve(synth.getVoices())
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      synth.removeEventListener('voiceschanged', handleVoicesChanged)
+      resolve(synth.getVoices())
+    }, 400)
+
+    synth.addEventListener('voiceschanged', handleVoicesChanged)
+  })
+}
+
+function scoreBrowserVoice(voice: SpeechSynthesisVoice, lang: SpeechLang) {
+  const voiceLang = voice.lang.toLowerCase()
+  const voiceName = voice.name.toLowerCase()
+  let score = 0
+
+  if (lang === 'hi') {
+    if (voiceLang === 'hi-in') score += 100
+    if (voiceLang.startsWith('hi')) score += 70
+  } else if (lang === 'en') {
+    if (voiceLang === 'en-in') score += 100
+    if (voiceLang.startsWith('en')) score += 70
+  } else {
+    if (voiceLang === 'hi-in') score += 100
+    if (voiceLang === 'en-in') score += 95
+    if (voiceLang.startsWith('hi')) score += 75
+    if (voiceLang.startsWith('en')) score += 70
+  }
+
+  if (voice.default) score += 8
+  if (/google|microsoft|natural|online/i.test(voiceName)) score += 6
+  if (/female|woman|india/i.test(voiceName)) score += 3
+
+  return score
+}
+
+async function speakWithWebVoice(
+  text: string,
+  {
+    lang,
+    speed = 1,
+    rate = 1,
+    pitch = 1,
+    volume = 1,
+    interrupt = true,
+  }: SpeakOptions & { lang: SpeechLang },
+) {
+  if (!canUseWebSpeech()) return null
+
+  const synth = window.speechSynthesis
+  const voices = await getAvailableBrowserVoices()
+  const voice = [...voices].sort((left, right) => scoreBrowserVoice(right, lang) - scoreBrowserVoice(left, lang))[0] ?? null
+
+  if (interrupt !== false) {
+    stopActiveUtterance()
+  }
+
+  const utterance = new SpeechSynthesisUtterance(text)
+  activeUtterance = utterance
+  utterance.voice = voice
+  utterance.lang = voice?.lang || (lang === 'en' ? 'en-IN' : 'hi-IN')
+  utterance.rate = clamp(rate * speed, 0.8, 1.2)
+  utterance.pitch = clamp(pitch, 0.85, 1.15)
+  utterance.volume = clamp(volume, 0, 1)
+  utterance.onend = () => {
+    if (activeUtterance === utterance) {
+      activeUtterance = null
+    }
+  }
+  utterance.onerror = () => {
+    if (activeUtterance === utterance) {
+      activeUtterance = null
+    }
+  }
+
+  try {
+    synth.speak(utterance)
+  } catch {
+    if (activeUtterance === utterance) {
+      activeUtterance = null
+    }
+  }
+
+  return null
+}
+
 function base64ToBytes(base64: string) {
   const binary = atob(base64)
   const bytes = new Uint8Array(binary.length)
@@ -302,13 +463,16 @@ async function requestGeminiAudio(
     lang,
     emotion = 'friendly',
     cacheable = true,
+    signal,
   }: {
     lang: SpeechLang
     emotion?: SpeakEmotion
     cacheable?: boolean
+    signal?: AbortSignal
   },
 ): Promise<Blob | null> {
   if (!hasGeminiTtsConfig()) return null
+  if (isGeminiTtsLocked()) return null
 
   const requestKey = cacheKeyForText(text, lang, emotion)
 
@@ -325,13 +489,14 @@ async function requestGeminiAudio(
   const requestPromise = (async () => {
     let lastError: Error | null = null
 
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
       const response = await fetch(`${GEMINI_API_BASE_URL}/models/${encodeURIComponent(GEMINI_TTS_MODEL)}:generateContent`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-goog-api-key': GEMINI_API_KEY,
         },
+        signal,
         body: JSON.stringify({
           contents: [
             {
@@ -369,8 +534,16 @@ async function requestGeminiAudio(
         return blob
       }
 
-      lastError = new Error(`Gemini TTS failed with status ${response.status}`)
-      if (response.status !== 429 && response.status < 500) {
+      const errorText = await response.text()
+
+      if (response.status === 429) {
+        const isDailyQuotaLimit = /GenerateRequestsPerDayPerProjectPerModel-FreeTier|quota exceeded/i.test(errorText)
+        setGeminiTtsLockUntil(isDailyQuotaLimit ? getNextLocalMidnightTimestamp() : Date.now() + TRANSIENT_TTS_LOCK_MS)
+        throw new Error(isDailyQuotaLimit ? 'Gemini TTS daily quota exhausted' : 'Gemini TTS temporarily rate limited')
+      }
+
+      lastError = new Error(errorText || `Gemini TTS failed with status ${response.status}`)
+      if (response.status < 500) {
         break
       }
 
@@ -418,8 +591,11 @@ async function playAudioBlob(blob: Blob, speed = 1): Promise<HTMLAudioElement | 
 }
 
 export function getVoiceEngineInfo(): VoiceEngineInfo {
+  const hasGeminiVoice = isOnline() && hasGeminiTtsConfig() && !isGeminiTtsLocked()
+  const hasBrowserVoice = canUseWebSpeech()
+
   return {
-    provider: isOnline() && hasGeminiTtsConfig() ? 'gemini-tts' : 'disabled',
+    provider: hasGeminiVoice ? 'gemini-tts' : hasBrowserVoice ? 'web-speech' : 'disabled',
     online: isOnline(),
     apiConfigured: hasGeminiTtsConfig(),
     voiceId: GEMINI_TTS_VOICE,
@@ -433,6 +609,9 @@ export async function sakhiSpeak(
     lang = 'hinglish',
     emotion = 'friendly',
     speed = 1,
+    rate = 1,
+    pitch = 1,
+    volume = 1,
     interrupt = true,
     cacheable = true,
   }: SpeakOptions & { lang?: SpeechLang } = {},
@@ -446,10 +625,14 @@ export async function sakhiSpeak(
   ensureAudioActivationListeners()
 
   if (interrupt !== false) {
+    latestSpeechToken += 1
     stopSpeaking()
   }
 
-  if (!isOnline() || !hasGeminiTtsConfig()) {
+  const canAttemptGemini = isOnline() && hasGeminiTtsConfig() && !isGeminiTtsLocked()
+  const canAttemptBrowserVoice = canUseWebSpeech()
+
+  if (!canAttemptGemini && !canAttemptBrowserVoice) {
     return null
   }
 
@@ -458,14 +641,47 @@ export async function sakhiSpeak(
   }
 
   let playedAudio: HTMLAudioElement | null = null
+  const speechToken = latestSpeechToken
   speechQueue = speechQueue.then(async () => {
     try {
-      const blob = await requestGeminiAudio(speechText, { lang, emotion, cacheable })
-      if (!blob) return
-      playedAudio = await playAudioBlob(blob, speed)
-    } catch {
+      if (interrupt !== false && speechToken !== latestSpeechToken) return
+
+      if (canAttemptGemini) {
+        const abortController = new AbortController()
+        activeSpeechAbortController = abortController
+        const blob = await requestGeminiAudio(speechText, {
+          lang,
+          emotion,
+          cacheable,
+          signal: abortController.signal,
+        })
+        if (activeSpeechAbortController === abortController) {
+          activeSpeechAbortController = null
+        }
+
+        if (interrupt !== false && speechToken !== latestSpeechToken) return
+        if (blob) {
+          playedAudio = await playAudioBlob(blob, speed)
+          return
+        }
+      }
+
+      if (interrupt !== false && speechToken !== latestSpeechToken) return
+      if (!canAttemptBrowserVoice) return
+      playedAudio = await speakWithWebVoice(speechText, { lang, speed, rate, pitch, volume, interrupt })
+    } catch (error) {
+      if ((error as Error).name === 'AbortError') {
+        return
+      }
+
+      if (interrupt !== false && speechToken !== latestSpeechToken) return
+      if (canAttemptBrowserVoice) {
+        playedAudio = await speakWithWebVoice(speechText, { lang, speed, rate, pitch, volume, interrupt })
+        return
+      }
+
       if (import.meta.env.DEV) {
-        console.warn('Gemini TTS unavailable')
+        console.warn('Gemini TTS unavailable', error)
       }
     }
   })
@@ -483,7 +699,9 @@ export function speakButton(text: string, lang: SpeechLang) {
 }
 
 export function stopSpeaking() {
+  stopActiveSpeechRequest()
   stopActiveAudio()
+  stopActiveUtterance()
 }
 
 export async function preloadCriticalAudio() {
