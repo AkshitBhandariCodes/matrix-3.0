@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { useGameStore, t3 } from '../store/gameStore'
 import { characterImages, realm1, realm2, realm3, realm4, realm5 } from '../data/realms'
+import { speak } from '../utils/speech'
 import {
   Languages, Wallet, ShieldCheck, Store, TrendingUp, Landmark,
   Gamepad2, Volume2, WifiOff, Users, GraduationCap, ChevronRight,
@@ -13,10 +14,11 @@ interface DeferredInstallPromptEvent extends Event {
 }
 
 export const IntroScreen: React.FC = () => {
-  const { setScreen, setPlayerName, language, cycleLang } = useGameStore()
+  const { setScreen, setPlayerName, language, cycleLang, voiceMode } = useGameStore()
   const [name, setName] = useState('')
   const [started, setStarted] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const welcomedRef = useRef(false)
 
   const tt = (hi: string, en: string, hg: string) => t3(hi, en, hg, language)
 
@@ -24,6 +26,9 @@ export const IntroScreen: React.FC = () => {
     const finalName = name.trim() || 'Meera'
     setPlayerName(finalName)
     setStarted(true)
+    if (voiceMode) {
+      speak(tt('यात्रा शुरू हो रही है।', 'Your journey is starting.', 'Yatra shuru ho rahi hai.'), language)
+    }
     setTimeout(() => setScreen('hub'), 1200)
   }
 
@@ -38,6 +43,20 @@ export const IntroScreen: React.FC = () => {
     window.addEventListener('beforeinstallprompt', handler)
     return () => window.removeEventListener('beforeinstallprompt', handler)
   }, [])
+
+  React.useEffect(() => {
+    if (welcomedRef.current || !voiceMode || started) return
+    welcomedRef.current = true
+    speak(
+      tt(
+        'नमस्ते सखी। यह आपकी वित्तीय यात्रा का प्रवेश द्वार है। अपना नाम लिखिए और यात्रा शुरू कीजिए।',
+        'Welcome, Sakhi. This is the start of your financial journey. Enter your name and begin.',
+        'Namaste Sakhi. Yeh tumhari financial journey ki shuruaat hai. Apna naam likho aur begin karo.',
+      ),
+      language,
+    )
+  }, [language, started, voiceMode])
+
   const handleInstall = async () => {
     if (installPrompt) { installPrompt.prompt(); setInstallPrompt(null) }
   }

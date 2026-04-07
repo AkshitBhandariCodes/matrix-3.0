@@ -3,6 +3,7 @@ import { useGameStore, t3 } from '../store/gameStore'
 import { realm1, realm2, realm3, realm4, realm5, characterImages } from '../data/realms'
 import { VirtualJoystick } from '../components/VirtualJoystick'
 import { useResponsiveMode } from '../hooks/useResponsiveMode'
+import { speak } from '../utils/speech'
 import { Heart, Brain, Languages, Award, DoorOpen, Trophy, Volume2, VolumeX, Menu, X, Lock, UserCircle, Users, ShieldAlert } from 'lucide-react'
 import hubBgImg from '../assets/environment/hub_bg.png'
 import { isRealmEnabled, type RealmScreen } from '../config/prototype'
@@ -220,6 +221,7 @@ export const HubScreen: React.FC = () => {
   const bgImageRef = useRef<HTMLImageElement | null>(null)
   const playerImageRef = useRef<HTMLImageElement | null>(null)
   const movingRef = useRef(false)
+  const welcomedRef = useRef(false)
   const worldDimRef = useRef({ w: 900, h: 600 })
   const [menuOpen, setMenuOpen] = useState(false)
   const { isCompactView: isMobileView, isTouchInput } = useResponsiveMode()
@@ -238,6 +240,20 @@ export const HubScreen: React.FC = () => {
     const pl = new Image(); pl.src = characterImages.sakhi
     pl.onload = () => { playerImageRef.current = pl }
   }, [endTransition])
+
+  useEffect(() => {
+    if (welcomedRef.current || !voiceMode) return
+
+    welcomedRef.current = true
+    speak(
+      tt(
+        `${playerName || 'सखी'}, हब दुनिया में आपका स्वागत है। जो realm चमक रहा है, उसकी ओर बढ़िए और सीखना शुरू कीजिए।`,
+        `Welcome to the hub world, ${playerName || 'Sakhi'}. Move toward a glowing realm gate to begin learning.`,
+        `Hub world mein welcome ${playerName || 'Sakhi'}. Jo glowing realm gate dikhe, uski taraf jao aur learning start karo.`,
+      ),
+      language,
+    )
+  }, [language, playerName, tt, voiceMode])
 
   // Dynamic gate positions based on world dimensions
   const getGates = useCallback((ww: number, wh: number): Gate[] => [

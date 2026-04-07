@@ -13,7 +13,7 @@ interface SpeakOptions {
 }
 
 export interface VoiceEngineInfo {
-  provider: 'gemini-tts' | 'browser-fallback'
+  provider: 'gemini-tts' | 'disabled'
   online: boolean
   apiConfigured: boolean
   voiceId: string
@@ -25,7 +25,7 @@ const GEMINI_API_KEY = (import.meta.env.VITE_GEMINI_API_KEY as string | undefine
 const GEMINI_TTS_MODEL = (import.meta.env.VITE_GEMINI_TTS_MODEL as string | undefined)?.trim() || 'gemini-2.5-flash-preview-tts'
 const GEMINI_TTS_VOICE = (import.meta.env.VITE_GEMINI_TTS_VOICE as string | undefined)?.trim() || 'Achird'
 
-const SAKHI_AUDIO_CACHE = 'sakhi-audio-v2'
+const SAKHI_AUDIO_CACHE = 'sakhi-audio-v3'
 const SAKHI_AUDIO_CACHE_LIMIT_BYTES = 8 * 1024 * 1024
 const GEMINI_TTS_SAMPLE_RATE = 24000
 
@@ -37,12 +37,16 @@ export const SAKHI_PHRASES = [
   'Wisdom plus 10!',
 ]
 
-const DEVA_RX = /[\u0900-\u097F]/
-const LATIN_RX = /[A-Za-z]/
-
 let activeAudio: HTMLAudioElement | null = null
-let cachedHindiVoice: SpeechSynthesisVoice | null = null
-let cachedEnglishVoice: SpeechSynthesisVoice | null = null
+
+const HINDI_SPEECH_REPLACEMENTS: Array<{ pattern: RegExp; replacement: string }> = [
+  { pattern: /\bSHG\b/gi, replacement: 'एस एच जी' },
+  { pattern: /\bUPI\b/gi, replacement: 'यू पी आई' },
+  { pattern: /\bDBT\b/gi, replacement: 'डी बी टी' },
+  { pattern: /\bNRLM\b/gi, replacement: 'एन आर एल एम' },
+  { pattern: /\bPM\b/gi, replacement: 'पी एम' },
+  { pattern: /\bMUDRA\b/gi, replacement: 'मुद्रा' },
+]
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
@@ -50,10 +54,6 @@ function clamp(value: number, min: number, max: number) {
 
 function isOnline() {
   return typeof navigator === 'undefined' ? true : navigator.onLine
-}
-
-function hasWebSpeech() {
-  return typeof window !== 'undefined' && 'speechSynthesis' in window
 }
 
 function hasGeminiTtsConfig() {
@@ -141,176 +141,24 @@ function stopActiveAudio() {
   activeAudio = null
 }
 
-function loadVoices(): SpeechSynthesisVoice[] {
-  if (!hasWebSpeech()) return []
-  return window.speechSynthesis.getVoices()
-}
-
-function scoreHindiVoice(voice: SpeechSynthesisVoice): number {
-  const name = voice.name.toLowerCase()
-  const lang = voice.lang.toLowerCase()
-  let score = 0
-
-  if (lang === 'hi-in') score += 100
-  if (lang.startsWith('hi')) score += 70
-  if (lang.includes('in')) score += 15
-  if (name.includes('google') || name.includes('microsoft')) score += 15
-  if (name.includes('neural') || name.includes('natural')) score += 14
-  if (voice.default) score += 10
-
-  return score
-}
-
-function scoreEnglishVoice(voice: SpeechSynthesisVoice): number {
-  const name = voice.name.toLowerCase()
-  const lang = voice.lang.toLowerCase()
-  let score = 0
-
-  if (lang === 'en-in') score += 100
-  if (lang.startsWith('en')) score += 60
-  if (lang.includes('in')) score += 20
-  if (name.includes('google') || name.includes('microsoft')) score += 15
-  if (name.includes('neural') || name.includes('natural')) score += 12
-  if (voice.default) score += 10
-
-  return score
-}
-
-function findBestVoice(lang: 'hi' | 'en'): SpeechSynthesisVoice | null {
-  const voices = loadVoices()
-  if (!voices.length) return null
-
-  if (lang === 'hi' && cachedHindiVoice) return cachedHindiVoice
-  if (lang === 'en' && cachedEnglishVoice) return cachedEnglishVoice
-
-  const scored = voices
-    .map((voice) => ({
-      voice,
-      score: lang === 'hi' ? scoreHindiVoice(voice) : scoreEnglishVoice(voice),
-    }))
-    .sort((a, b) => b.score - a.score)
-
-  const bestVoice = scored[0]?.voice ?? null
-  if (lang === 'hi') cachedHindiVoice = bestVoice
-  if (lang === 'en') cachedEnglishVoice = bestVoice
-  return bestVoice
-}
-
-function normalizeTokenLang(token: string, previous: 'hi' | 'en'): 'hi' | 'en' {
-  if (DEVA_RX.test(token)) return 'hi'
-  if (LATIN_RX.test(token)) return 'en'
-  return previous
-}
-
-function splitHinglishSegments(text: string): Array<{ text: string; lang: 'hi' | 'en' }> {
-  const chunks = text
-    .split(/([,.;!?\n])/g)
-    .map((chunk) => chunk.trim())
-    .filter(Boolean)
-
-  if (!chunks.length) {
-    return [{ text, lang: 'hi' }]
-  }
-
-  const segments: Array<{ text: string; lang: 'hi' | 'en' }> = []
-  let previousLang: 'hi' | 'en' = 'hi'
-
-  for (const chunk of chunks) {
-    const lang = normalizeTokenLang(chunk, previousLang)
-    const previous = segments[segments.length - 1]
-
-    if (previous && previous.lang === lang) {
-      previous.text = `${previous.text} ${chunk}`.trim()
-    } else {
-      segments.push({ text: chunk, lang })
-    }
-
-    previousLang = lang
-  }
-
-  return segments
-}
-
-const HINDI_SPEECH_REPLACEMENTS: Array<{ pattern: RegExp; replacement: string }> = [
-  { pattern: /\bSHG\b/gi, replacement: 'एस एच जी' },
-  { pattern: /\bUPI\b/gi, replacement: 'यू पी आई' },
-  { pattern: /\bDBT\b/gi, replacement: 'डी बी टी' },
-  { pattern: /\bNRLM\b/gi, replacement: 'एन आर एल एम' },
-  { pattern: /\bPM\b/gi, replacement: 'पी एम' },
-  { pattern: /\bMUDRA\b/gi, replacement: 'मुद्रा' },
-]
-
 function normalizeSpeechTextForLang(text: string, lang: SpeechLang): string {
   let normalized = text
     .replace(/https?:\/\/\S+/gi, '')
     .replace(/\s+/g, ' ')
     .trim()
 
-  if (lang !== 'hi') return normalized
+  if (lang === 'hi' || lang === 'hinglish') {
+    normalized = normalized
+      .replace(/₹\s*([\d,]+)/g, '$1 रुपये')
+      .replace(/\//g, ' ')
+      .replace(/&/g, ' और ')
 
-  normalized = normalized
-    .replace(/₹\s*([\d,]+)/g, '$1 रुपये')
-    .replace(/\//g, ' ')
-    .replace(/&/g, ' और ')
-
-  for (const entry of HINDI_SPEECH_REPLACEMENTS) {
-    normalized = normalized.replace(entry.pattern, entry.replacement)
+    for (const entry of HINDI_SPEECH_REPLACEMENTS) {
+      normalized = normalized.replace(entry.pattern, entry.replacement)
+    }
   }
 
   return normalized.replace(/\s+/g, ' ').trim()
-}
-
-function getFallbackRate(lang: 'hi' | 'en', options: SpeakOptions) {
-  if (typeof options.rate === 'number') return options.rate
-  return lang === 'en' ? 0.98 : 0.93
-}
-
-function speakSegment(text: string, lang: 'hi' | 'en', options: SpeakOptions, onEnd?: () => void) {
-  if (!hasWebSpeech()) return
-
-  const utterance = new SpeechSynthesisUtterance(text)
-  const selectedVoice = findBestVoice(lang)
-
-  if (selectedVoice) {
-    utterance.voice = selectedVoice
-    utterance.lang = selectedVoice.lang
-  } else {
-    utterance.lang = lang === 'en' ? 'en-IN' : 'hi-IN'
-  }
-
-  utterance.rate = getFallbackRate(lang, options)
-  utterance.pitch = options.pitch ?? 1.0
-  utterance.volume = options.volume ?? 1.0
-  if (onEnd) utterance.onend = onEnd
-
-  window.speechSynthesis.speak(utterance)
-}
-
-export function speakFallback(text: string, lang: SpeechLang, options: SpeakOptions = {}) {
-  if (!text.trim() || !hasWebSpeech()) return null
-
-  if (options.interrupt !== false) {
-    window.speechSynthesis.cancel()
-  }
-
-  if (lang !== 'hinglish') {
-    speakSegment(text, lang === 'en' ? 'en' : 'hi', options)
-    return null
-  }
-
-  const segments = splitHinglishSegments(text)
-  let index = 0
-
-  const playNext = () => {
-    const next = segments[index]
-    index += 1
-    if (!next) return
-
-    speakSegment(next.text, next.lang, { ...options, interrupt: false }, playNext)
-  }
-
-  playNext()
-  return null
 }
 
 function getVoiceDirection(lang: SpeechLang, emotion: SpeakEmotion) {
@@ -339,7 +187,7 @@ function buildGeminiTtsPrompt(text: string, lang: SpeechLang, emotion: SpeakEmot
     '## THE SCENE: A supportive mentor is guiding a learner inside a mobile financial literacy game.',
     '### DIRECTORS NOTES',
     `Style: ${style}`,
-    'Pacing: Medium pace, very clear, mobile-friendly, short pauses at commas and full stops.',
+    'Pacing: Medium pace, very clear, mobile-friendly, with natural sentence pauses.',
     `Accent: ${accent}`,
     '### TRANSCRIPT',
     text,
@@ -508,7 +356,7 @@ async function playAudioBlob(blob: Blob, speed = 1): Promise<HTMLAudioElement | 
 
 export function getVoiceEngineInfo(): VoiceEngineInfo {
   return {
-    provider: isOnline() && hasGeminiTtsConfig() ? 'gemini-tts' : 'browser-fallback',
+    provider: isOnline() && hasGeminiTtsConfig() ? 'gemini-tts' : 'disabled',
     online: isOnline(),
     apiConfigured: hasGeminiTtsConfig(),
     voiceId: GEMINI_TTS_VOICE,
@@ -524,7 +372,6 @@ export async function sakhiSpeak(
     speed = 1,
     interrupt = true,
     cacheable = true,
-    ...fallbackOptions
   }: SpeakOptions & { lang?: SpeechLang } = {},
 ): Promise<HTMLAudioElement | null> {
   const cleanText = text.trim()
@@ -538,22 +385,19 @@ export async function sakhiSpeak(
   }
 
   if (!isOnline() || !hasGeminiTtsConfig()) {
-    return speakFallback(speechText, lang, { ...fallbackOptions, interrupt: false })
+    return null
   }
 
   try {
     const blob = await requestGeminiAudio(speechText, { lang, emotion, cacheable })
-    if (blob) {
-      const audio = await playAudioBlob(blob, speed)
-      if (audio) return audio
-    }
+    if (!blob) return null
+    return await playAudioBlob(blob, speed)
   } catch {
     if (import.meta.env.DEV) {
-      console.warn('Gemini TTS failed, using fallback Web Speech')
+      console.warn('Gemini TTS unavailable')
     }
+    return null
   }
-
-  return speakFallback(speechText, lang, { ...fallbackOptions, interrupt: false })
 }
 
 export function speak(text: string, lang: SpeechLang, options: SpeakOptions = {}) {
@@ -566,9 +410,6 @@ export function speakButton(text: string, lang: SpeechLang) {
 
 export function stopSpeaking() {
   stopActiveAudio()
-  if (hasWebSpeech()) {
-    window.speechSynthesis.cancel()
-  }
 }
 
 export async function preloadCriticalAudio() {
@@ -578,16 +419,7 @@ export async function preloadCriticalAudio() {
     try {
       await requestGeminiAudio(phrase, { lang: 'hinglish', emotion: 'friendly', cacheable: true })
     } catch {
-      // Ignore preload failures; runtime fallback handles it.
+      // Ignore preload failures; runtime handles unavailable audio.
     }
   }
-}
-
-if (hasWebSpeech()) {
-  window.speechSynthesis.onvoiceschanged = () => {
-    cachedHindiVoice = null
-    cachedEnglishVoice = null
-    loadVoices()
-  }
-  loadVoices()
 }
