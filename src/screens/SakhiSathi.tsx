@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useGameStore, t3 } from '../store/gameStore'
 import { characterImages } from '../data/realms'
+import { shgSchemes, type ShgScheme } from '../data/shgSchemes'
 import { speak } from '../utils/speech'
+import { formatSchemeGuideForSpeech, getAdaptiveSchemeGuide, type SchemeGuideContent } from '../utils/learningContent'
 import { VirtualJoystick } from '../components/VirtualJoystick'
 import { useResponsiveMode } from '../hooks/useResponsiveMode'
 import realm5Bg from '../assets/environment/realm5_bg.png'
@@ -15,6 +17,7 @@ import {
   IndianRupee,
   Landmark,
   Menu,
+  Sparkles,
   ReceiptText,
   UserCircle,
   Users,
@@ -24,7 +27,7 @@ import {
   X,
 } from 'lucide-react'
 
-type NpcId = 'leader' | 'treasurer' | 'entrepreneur' | 'sarpanch'
+type NpcId = 'leader' | 'treasurer' | 'entrepreneur' | 'banker' | 'sarpanch'
 
 interface ShgNpc {
   id: NpcId
@@ -93,6 +96,22 @@ const npcs: ShgNpc[] = [
     intro_hinglish: 'Chhote SHG tasks se income badhti hai aur repayment easy hota hai.',
   },
   {
+    id: 'banker',
+    xPct: 48,
+    yPct: 22,
+    color: '#38bdf8',
+    image: characterImages.banker,
+    name_hi: 'Banker Didi',
+    name_en: 'Banker Didi',
+    name_hinglish: 'Banker Didi',
+    role_hi: 'Scheme Guide Banker',
+    role_en: 'Scheme Guide Banker',
+    role_hinglish: 'Scheme Guide Banker',
+    intro_hi: 'Kisi bhi scheme card par tap kijiye. Main us scheme ka short voice guide samjhaungi.',
+    intro_en: 'Tap any scheme card and I will explain that scheme with a short voice guide.',
+    intro_hinglish: 'Kisi bhi scheme card par tap karo. Main us scheme ka short voice guide samjhaungi.',
+  },
+  {
     id: 'sarpanch',
     xPct: 76,
     yPct: 70,
@@ -135,6 +154,9 @@ export const SakhiSathi: React.FC = () => {
   const [businessTaskDay, setBusinessTaskDay] = useState(0)
 
   const [activeNpcId, setActiveNpcId] = useState<NpcId | null>(null)
+  const [selectedSchemeId, setSelectedSchemeId] = useState<string | null>(null)
+  const [activeSchemeGuide, setActiveSchemeGuide] = useState<SchemeGuideContent | null>(null)
+  const [loadingSchemeId, setLoadingSchemeId] = useState<string | null>(null)
   const [activityLog, setActivityLog] = useState<string[]>([])
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -147,6 +169,10 @@ export const SakhiSathi: React.FC = () => {
   const { isCompactView: isMobileView, isTouchInput } = useResponsiveMode()
 
   const activeNpc = useMemo(() => npcs.find((npc) => npc.id === activeNpcId) ?? null, [activeNpcId])
+  const selectedScheme = useMemo(
+    () => shgSchemes.find((scheme) => scheme.id === selectedSchemeId) ?? null,
+    [selectedSchemeId],
+  )
 
   const nearNpcId = useMemo(() => {
     let closest: NpcId | null = null
@@ -355,8 +381,36 @@ export const SakhiSathi: React.FC = () => {
     if (voiceMode) speak(message, language)
   }, [language, pushLog, schemeScript, tt, voiceMode])
 
+  const handleSchemeGuideClick = useCallback(async (scheme: ShgScheme) => {
+    setSelectedSchemeId(scheme.id)
+    setLoadingSchemeId(scheme.id)
+    setActiveSchemeGuide(null)
+
+    try {
+      const guide = await getAdaptiveSchemeGuide({
+        scheme,
+        language,
+      })
+
+      setActiveSchemeGuide(guide)
+      pushLog(tt(
+        `${scheme.title.hi} guide khul gayi.`,
+        `${scheme.title.en} guide opened.`,
+        `${scheme.title.hinglish} guide khul gayi.`,
+      ))
+      speak(formatSchemeGuideForSpeech(guide), language)
+    } finally {
+      setLoadingSchemeId(null)
+    }
+  }, [language, pushLog, tt])
+
   const openNpc = useCallback((npc: ShgNpc) => {
     setActiveNpcId(npc.id)
+    if (npc.id !== 'banker') {
+      setSelectedSchemeId(null)
+      setActiveSchemeGuide(null)
+      setLoadingSchemeId(null)
+    }
     narrate(npc.intro_hi, npc.intro_en, npc.intro_hinglish)
   }, [narrate])
 
@@ -826,6 +880,99 @@ export const SakhiSathi: React.FC = () => {
                 <button onClick={doBusinessTask} className="btn-primary" style={{ background: '#2563eb', fontSize: 12 }}>
                   <ClipboardCheck size={15} /> {tt('दैनिक SHG उद्यम task पूरा करें (+₹750)', 'Complete daily enterprise task (+₹750)', 'Daily enterprise task complete karo (+₹750)')}
                 </button>
+              </div>
+            )}
+
+            {activeNpc.id === 'banker' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+                <div className="glass" style={{ padding: '10px 12px', borderColor: 'rgba(56,189,248,0.45)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                    <Sparkles size={14} color="#38bdf8" />
+                    <span style={{ fontSize: 12, color: '#38bdf8', fontWeight: 800 }}>
+                      {tt('Scheme Voice Guide Desk', 'Scheme Voice Guide Desk', 'Scheme Voice Guide Desk')}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', lineHeight: 1.6 }}>
+                    {tt(
+                      'Kisi bhi scheme par tap karke short explanation aur agla step sun sakte hain.',
+                      'Tap any scheme to hear a short explanation and the next step.',
+                      'Kisi bhi scheme par tap karke short explanation aur next step sun sakte ho.',
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+                  {shgSchemes.map((scheme) => {
+                    const isSelected = selectedSchemeId === scheme.id
+                    const isLoading = loadingSchemeId === scheme.id
+
+                    return (
+                      <button
+                        key={scheme.id}
+                        onClick={() => handleSchemeGuideClick(scheme)}
+                        style={{
+                          textAlign: 'left',
+                          padding: '11px 12px',
+                          borderRadius: 12,
+                          border: `1px solid ${isSelected ? `${scheme.color}` : 'rgba(255,255,255,0.12)'}`,
+                          background: isSelected ? `${scheme.color}22` : 'rgba(255,255,255,0.04)',
+                          color: '#fff',
+                          cursor: 'pointer',
+                          fontFamily: 'var(--font-primary)',
+                        }}
+                      >
+                        <div style={{ fontSize: 12, fontWeight: 900, color: scheme.color, marginBottom: 4 }}>
+                          {tt(scheme.title.hi, scheme.title.en, scheme.title.hinglish)}
+                        </div>
+                        <div style={{ fontSize: 11, lineHeight: 1.55, color: 'rgba(255,255,255,0.76)' }}>
+                          {isLoading
+                            ? tt('Guide ban rahi hai...', 'Generating guide...', 'Guide ban rahi hai...')
+                            : tt(scheme.summary.hi, scheme.summary.en, scheme.summary.hinglish)}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {activeSchemeGuide && selectedScheme && (
+                  <div className="glass" style={{ padding: '12px 12px', borderColor: `${selectedScheme.color}66` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+                      <div style={{ fontSize: 13, fontWeight: 900, color: selectedScheme.color }}>
+                        {activeSchemeGuide.title}
+                      </div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: activeSchemeGuide.source === 'gemini' ? '#22c55e' : '#94a3b8' }}>
+                        {activeSchemeGuide.source === 'gemini' ? 'Gemini' : 'Static'}
+                      </div>
+                    </div>
+
+                    <p style={{ margin: '0 0 8px', fontSize: 11, lineHeight: 1.65, color: 'rgba(255,255,255,0.82)' }}>
+                      {activeSchemeGuide.explanation}
+                    </p>
+                    <p style={{ margin: '0 0 10px', fontSize: 11, lineHeight: 1.65, color: '#cbd5e1' }}>
+                      {activeSchemeGuide.action}
+                    </p>
+
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button
+                        onClick={() => speak(formatSchemeGuideForSpeech(activeSchemeGuide), language)}
+                        className="btn-primary"
+                        style={{ background: selectedScheme.color, fontSize: 12 }}
+                      >
+                        <Volume2 size={14} /> {tt('Phir se suno', 'Play Again', 'Phir se suno')}
+                      </button>
+
+                      <a
+                        href={selectedScheme.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn-glass"
+                        style={{ textDecoration: 'none', fontSize: 12 }}
+                      >
+                        {tt('Official Link', 'Official Link', 'Official Link')}
+                      </a>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

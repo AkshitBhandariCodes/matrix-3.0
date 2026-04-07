@@ -1,6 +1,7 @@
 import type { Challenge, Choice, Realm } from '../data/realms'
 import { useGameStore, type Language } from '../store/gameStore'
 import type { LearningContent } from '../types/learning'
+import type { ShgScheme } from '../data/shgSchemes'
 
 interface LearningRequest {
   realm: Realm
@@ -10,9 +11,39 @@ interface LearningRequest {
   playerName: string
 }
 
+export interface SchemeGuideContent {
+  title: string
+  explanation: string
+  action: string
+  source: 'gemini' | 'static'
+}
+
+interface SchemeGuideRequest {
+  scheme: ShgScheme
+  language: Language
+}
+
 const GEMINI_API_BASE_URL = import.meta.env.VITE_GEMINI_API_BASE_URL?.trim() || 'https://generativelanguage.googleapis.com/v1beta'
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY?.trim()
 const GEMINI_MODEL = import.meta.env.VITE_GEMINI_MODEL?.trim() || 'gemini-2.5-flash'
+const LEARNING_RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    answer: { type: 'string' },
+    explanation: { type: 'string' },
+    learning: { type: 'string' },
+  },
+  required: ['answer', 'explanation', 'learning'],
+}
+const SCHEME_GUIDE_RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    title: { type: 'string' },
+    explanation: { type: 'string' },
+    action: { type: 'string' },
+  },
+  required: ['title', 'explanation', 'action'],
+}
 
 function t3(hi: string, en: string, hinglish: string, language: Language) {
   if (language === 'hi') return hi
@@ -46,8 +77,13 @@ function setCacheEntry(key: string, value: LearningContent) {
 }
 
 function getCacheKey({ realm, challenge, choice, language }: LearningRequest) {
-  const mode = realm.id === 'realm5' && GEMINI_API_KEY ? 'gemini' : 'static'
+  const mode = GEMINI_API_KEY ? 'gemini' : 'static'
   return [realm.id, challenge.id, choice.id, language, GEMINI_MODEL, mode].join(':')
+}
+
+function getSchemeGuideCacheKey({ scheme, language }: SchemeGuideRequest) {
+  const mode = GEMINI_API_KEY ? 'gemini' : 'static'
+  return ['scheme-guide', scheme.id, language, GEMINI_MODEL, mode].join(':')
 }
 
 function buildPrompt({ realm, challenge, choice, language, playerName }: LearningRequest) {
@@ -114,6 +150,32 @@ function buildPrompt({ realm, challenge, choice, language, playerName }: Learnin
         },
         outcome: choice.outcome,
       },
+    }, null, 2),
+  ].join('\n')
+}
+
+function buildSchemeGuidePrompt({ scheme, language }: SchemeGuideRequest) {
+  const requestedLanguage = language === 'hi'
+    ? 'Hindi'
+    : language === 'en'
+      ? 'English'
+      : 'Hinglish'
+
+  return [
+    'You are generating a very short voice-friendly scheme guide for a mobile SHG learning game.',
+    'Ground every line only in the provided static data.',
+    'Do not invent new numbers, benefits, rules, or websites.',
+    'Keep the output brief, practical, and easy to hear in audio.',
+    `Write only in ${requestedLanguage}.`,
+    'Return strict JSON only with keys: title, explanation, action.',
+    '',
+    'Static scheme data:',
+    JSON.stringify({
+      id: scheme.id,
+      title: scheme.title,
+      summary: scheme.summary,
+      steps: scheme.steps,
+      url: scheme.url,
     }, null, 2),
   ].join('\n')
 }
@@ -203,6 +265,91 @@ function extractTextPayload(payload: unknown) {
   return parseLearningJson(candidateText || null)
 }
 
+function parseSchemeGuideJson(rawText: string | null) {
+  if (!rawText) return null
+
+  const trimmed = rawText.trim()
+  if (!trimmed) return null
+
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>
+    if (typeof parsed.title === 'string' && typeof parsed.explanation === 'string' && typeof parsed.action === 'string') {
+      return {
+        title: parsed.title,
+        explanation: parsed.explanation,
+        action: parsed.action,
+      }
+    }
+  } catch {
+    // Fall through and try extracting the JSON object from surrounding text.
+  }
+
+  const firstBrace = trimmed.indexOf('{')
+  const lastBrace = trimmed.lastIndexOf('}')
+  if (firstBrace === -1 || lastBrace === -1 || firstBrace >= lastBrace) return null
+
+  try {
+    const parsed = JSON.parse(trimmed.slice(firstBrace, lastBrace + 1)) as Record<string, unknown>
+    if (typeof parsed.title === 'string' && typeof parsed.explanation === 'string' && typeof parsed.action === 'string') {
+      return {
+        title: parsed.title,
+        explanation: parsed.explanation,
+        action: parsed.action,
+      }
+    }
+  } catch {
+    return null
+  }
+
+  return null
+}
+
+function extractSchemeGuidePayload(payload: unknown) {
+  if (!payload) return null
+
+  if (typeof payload === 'string') {
+    return parseSchemeGuideJson(payload)
+  }
+
+  if (typeof payload !== 'object') return null
+
+  const record = payload as Record<string, unknown>
+  if (typeof record.title === 'string' && typeof record.explanation === 'string' && typeof record.action === 'string') {
+    return {
+      title: record.title,
+      explanation: record.explanation,
+      action: record.action,
+    }
+  }
+
+  const directText = typeof record.text === 'string'
+    ? record.text
+    : typeof record.output_text === 'string'
+      ? record.output_text
+      : null
+
+  if (directText) {
+    return parseSchemeGuideJson(directText)
+  }
+
+  const candidates = Array.isArray(record.candidates) ? record.candidates : []
+  const candidateText = candidates
+    .flatMap((candidate) => {
+      if (!candidate || typeof candidate !== 'object') return []
+      const content = (candidate as Record<string, unknown>).content
+      if (!content || typeof content !== 'object') return []
+      const parts = Array.isArray((content as Record<string, unknown>).parts)
+        ? (content as Record<string, unknown>).parts as Array<Record<string, unknown>>
+        : []
+      return parts
+        .map((part) => typeof part?.text === 'string' ? part.text : '')
+        .filter(Boolean)
+    })
+    .join('\n')
+
+  return parseSchemeGuideJson(candidateText || null)
+}
+
 async function requestGeminiLearningContent(request: LearningRequest) {
   if (!GEMINI_API_KEY) return null
 
@@ -221,8 +368,12 @@ async function requestGeminiLearningContent(request: LearningRequest) {
       ],
       generationConfig: {
         temperature: 0.4,
-        maxOutputTokens: 240,
+        maxOutputTokens: 320,
         responseMimeType: 'application/json',
+        responseJsonSchema: LEARNING_RESPONSE_SCHEMA,
+        thinkingConfig: {
+          thinkingBudget: 0,
+        },
       },
     }),
   })
@@ -232,6 +383,41 @@ async function requestGeminiLearningContent(request: LearningRequest) {
   }
 
   return extractTextPayload(await response.json())
+}
+
+async function requestGeminiSchemeGuide(request: SchemeGuideRequest) {
+  if (!GEMINI_API_KEY) return null
+
+  const response = await fetch(`${GEMINI_API_BASE_URL}/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': GEMINI_API_KEY,
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: buildSchemeGuidePrompt(request) }],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.35,
+        maxOutputTokens: 320,
+        responseMimeType: 'application/json',
+        responseJsonSchema: SCHEME_GUIDE_RESPONSE_SCHEMA,
+        thinkingConfig: {
+          thinkingBudget: 0,
+        },
+      },
+    }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Gemini scheme guide failed with ${response.status}`)
+  }
+
+  return extractSchemeGuidePayload(await response.json())
 }
 
 export async function getAdaptiveLearningContent(request: LearningRequest): Promise<LearningContent> {
@@ -248,7 +434,7 @@ export async function getAdaptiveLearningContent(request: LearningRequest): Prom
     return cached
   }
 
-  if (request.realm.id !== 'realm5' || !GEMINI_API_KEY) {
+  if (!GEMINI_API_KEY) {
     setCacheEntry(cacheKey, fallback)
     return fallback
   }
@@ -273,6 +459,54 @@ export async function getAdaptiveLearningContent(request: LearningRequest): Prom
     setCacheEntry(cacheKey, fallback)
     return fallback
   }
+}
+
+function getFallbackSchemeGuide({ scheme, language }: SchemeGuideRequest): SchemeGuideContent {
+  return {
+    title: t3(scheme.title.hi, scheme.title.en, scheme.title.hinglish, language),
+    explanation: t3(scheme.summary.hi, scheme.summary.en, scheme.summary.hinglish, language),
+    action: t3(scheme.steps.hi, scheme.steps.en, scheme.steps.hinglish, language),
+    source: 'static',
+  }
+}
+
+export async function getAdaptiveSchemeGuide(request: SchemeGuideRequest): Promise<SchemeGuideContent> {
+  const fallback = getFallbackSchemeGuide(request)
+  const cacheKey = getSchemeGuideCacheKey(request)
+
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return fallback
+  }
+
+  const cached = useGameStore.getState().learningContentCache[cacheKey] as unknown as SchemeGuideContent | undefined
+  if (cached?.title && cached?.explanation && cached?.action) {
+    return cached
+  }
+
+  if (!GEMINI_API_KEY) {
+    return fallback
+  }
+
+  try {
+    const content = await requestGeminiSchemeGuide(request)
+    if (!content) return fallback
+
+    const normalized: SchemeGuideContent = {
+      title: content.title.trim() || fallback.title,
+      explanation: content.explanation.trim() || fallback.explanation,
+      action: content.action.trim() || fallback.action,
+      source: 'gemini',
+    }
+
+    useGameStore.getState().setLearningContentCacheEntry(cacheKey, normalized as unknown as LearningContent)
+    return normalized
+  } catch {
+    return fallback
+  }
+}
+
+export function formatSchemeGuideForSpeech(content: SchemeGuideContent) {
+  return [content.title, content.explanation, content.action].filter(Boolean).join('. ')
 }
 
 export function formatLearningContent(content: LearningContent, language: Language) {
