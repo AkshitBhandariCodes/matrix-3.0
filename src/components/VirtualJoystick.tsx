@@ -20,20 +20,22 @@ export function VirtualJoystick({
   const containerRef = useRef<HTMLDivElement>(null)
   const knobRef = useRef<HTMLDivElement>(null)
   const activePointerIdRef = useRef<number | null>(null)
-  const activeTouchIdRef = useRef<number | null>(null)
   const centerRef = useRef({ x: 0, y: 0 })
 
   const radius = Math.max(36, Math.floor(size * 0.38))
   const knobSize = Math.max(40, Math.floor(size * 0.36))
 
+  const setKnobPosition = useCallback((dx: number, dy: number) => {
+    if (knobRef.current) {
+      knobRef.current.style.transform = `translate(${dx}px, ${dy}px)`
+    }
+  }, [])
+
   const resetJoystick = useCallback(() => {
     activePointerIdRef.current = null
-    activeTouchIdRef.current = null
-    if (knobRef.current) {
-      knobRef.current.style.transform = 'translate(0px, 0px)'
-    }
+    setKnobPosition(0, 0)
     onStop()
-  }, [onStop])
+  }, [onStop, setKnobPosition])
 
   const updateCenter = useCallback(() => {
     const rect = containerRef.current?.getBoundingClientRect()
@@ -48,7 +50,7 @@ export function VirtualJoystick({
   }, [])
 
   const handleMove = useCallback((clientX: number, clientY: number) => {
-    if (activePointerIdRef.current === null && activeTouchIdRef.current === null) return
+    if (activePointerIdRef.current === null) return
 
     const cx = centerRef.current.x
     const cy = centerRef.current.y
@@ -62,9 +64,7 @@ export function VirtualJoystick({
       dy = (dy / dist) * radius
     }
 
-    if (knobRef.current) {
-      knobRef.current.style.transform = `translate(${dx}px, ${dy}px)`
-    }
+    setKnobPosition(dx, dy)
 
     const nx = dx / radius
     const ny = dy / radius
@@ -75,19 +75,18 @@ export function VirtualJoystick({
     }
 
     onMove(nx, ny)
-  }, [onMove, onStop, radius])
+  }, [onMove, onStop, radius, setKnobPosition])
 
   const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault()
     event.stopPropagation()
 
     if (activePointerIdRef.current !== null && activePointerIdRef.current !== event.pointerId) {
-      resetJoystick()
+      return
     }
 
     if (!updateCenter()) return
 
-    activeTouchIdRef.current = null
     activePointerIdRef.current = event.pointerId
 
     try {
@@ -99,27 +98,19 @@ export function VirtualJoystick({
     handleMove(event.clientX, event.clientY)
   }, [handleMove, resetJoystick, updateCenter])
 
-  const handleTouchStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerId !== activePointerIdRef.current) return
     event.preventDefault()
     event.stopPropagation()
+    handleMove(event.clientX, event.clientY)
+  }, [handleMove])
 
-    // If pointer events are already active, ignore touch-start to avoid
-    // pointer/touch double-handling on mobile browsers.
-    if (activePointerIdRef.current !== null) return
-
-    const firstTouch = event.changedTouches[0]
-    if (!firstTouch) return
-
-    if (!updateCenter()) return
-
-    if (activePointerIdRef.current !== null || (activeTouchIdRef.current !== null && activeTouchIdRef.current !== firstTouch.identifier)) {
-      resetJoystick()
-    }
-
-    activePointerIdRef.current = null
-    activeTouchIdRef.current = firstTouch.identifier
-    handleMove(firstTouch.clientX, firstTouch.clientY)
-  }, [handleMove, resetJoystick, updateCenter])
+  const handlePointerEnd = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerId !== activePointerIdRef.current) return
+    event.preventDefault()
+    event.stopPropagation()
+    resetJoystick()
+  }, [resetJoystick])
 
   useEffect(() => {
     const onWindowPointerMove = (event: PointerEvent) => {
@@ -131,28 +122,8 @@ export function VirtualJoystick({
     const onWindowPointerUp = (event: PointerEvent) => {
       if (activePointerIdRef.current === null) return
       if (event.pointerId !== activePointerIdRef.current) return
-      resetJoystick()
-    }
-
-    const onWindowTouchMove = (event: TouchEvent) => {
-      const activeTouchId = activeTouchIdRef.current
-      if (activeTouchId === null) return
-
-      const movingTouch = Array.from(event.touches).find((touch) => touch.identifier === activeTouchId)
-      if (!movingTouch) return
-
       event.preventDefault()
-      handleMove(movingTouch.clientX, movingTouch.clientY)
-    }
-
-    const onWindowTouchEnd = (event: TouchEvent) => {
-      const activeTouchId = activeTouchIdRef.current
-      if (activeTouchId === null) return
-
-      const ended = Array.from(event.changedTouches).some((touch) => touch.identifier === activeTouchId)
-      if (ended) {
-        resetJoystick()
-      }
+      resetJoystick()
     }
 
     const onVisibilityChange = () => {
@@ -166,23 +137,19 @@ export function VirtualJoystick({
     window.addEventListener('pointermove', onWindowPointerMove, { passive: false })
     window.addEventListener('pointerup', onWindowPointerUp)
     window.addEventListener('pointercancel', onWindowPointerUp)
-    window.addEventListener('touchmove', onWindowTouchMove, { passive: false })
-    window.addEventListener('touchend', onWindowTouchEnd)
-    window.addEventListener('touchcancel', onWindowTouchEnd)
     window.addEventListener('blur', onWindowBlur)
+    window.addEventListener('resize', updateCenter)
     document.addEventListener('visibilitychange', onVisibilityChange)
 
     return () => {
       window.removeEventListener('pointermove', onWindowPointerMove)
       window.removeEventListener('pointerup', onWindowPointerUp)
       window.removeEventListener('pointercancel', onWindowPointerUp)
-      window.removeEventListener('touchmove', onWindowTouchMove)
-      window.removeEventListener('touchend', onWindowTouchEnd)
-      window.removeEventListener('touchcancel', onWindowTouchEnd)
       window.removeEventListener('blur', onWindowBlur)
+      window.removeEventListener('resize', updateCenter)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
-  }, [handleMove, resetJoystick])
+  }, [handleMove, resetJoystick, updateCenter])
 
   useEffect(() => () => resetJoystick(), [resetJoystick])
 
@@ -190,16 +157,11 @@ export function VirtualJoystick({
     <div
       data-virtual-joystick="true"
       ref={containerRef}
-      onPointerDownCapture={(event) => { event.preventDefault(); event.stopPropagation() }}
-      onTouchStartCapture={(event) => { event.preventDefault(); event.stopPropagation() }}
       onPointerDown={handlePointerDown}
-      onTouchStart={handleTouchStart}
-      onPointerUp={(event) => event.stopPropagation()}
-      onPointerCancel={(event) => event.stopPropagation()}
-      onTouchEnd={(event) => event.stopPropagation()}
-      onTouchCancel={(event) => event.stopPropagation()}
-      onLostPointerCapture={() => resetJoystick()}
-      onClick={(event) => event.stopPropagation()}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerEnd}
+      onPointerCancel={handlePointerEnd}
+      onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
       onContextMenu={(event) => event.preventDefault()}
       style={{
         position: 'absolute',
@@ -218,6 +180,7 @@ export function VirtualJoystick({
         zIndex,
         pointerEvents: 'auto',
         touchAction: 'none',
+        overscrollBehavior: 'contain',
         userSelect: 'none',
         WebkitUserSelect: 'none',
       }}

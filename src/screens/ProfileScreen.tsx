@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { useGameStore, t3 } from '../store/gameStore'
 import { realm1, realm2, realm3, realm4, realm5, characterImages } from '../data/realms'
-import { ArrowLeft, Heart, Brain, Star, CheckCircle2, Lock, Award, Gamepad2, Users, ShieldAlert } from 'lucide-react'
+import { useResponsiveMode } from '../hooks/useResponsiveMode'
+import { ArrowLeft, Heart, Brain, Star, CheckCircle2, Lock, Award, Gamepad2, Menu, Users, ShieldAlert, X } from 'lucide-react'
 import { isRealmEnabled, type RealmScreen } from '../config/prototype'
 
 export const ProfileScreen: React.FC = () => {
@@ -12,6 +13,8 @@ export const ProfileScreen: React.FC = () => {
   } = useGameStore()
   const [nameInput, setNameInput] = useState(playerName || '')
   const [nameSaved, setNameSaved] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const { isCompactView: isMobileView } = useResponsiveMode()
 
   const tt = (hi: string, en: string, hg: string) => t3(hi, en, hg, language)
 
@@ -52,14 +55,44 @@ export const ProfileScreen: React.FC = () => {
       overflowY: 'auto',
     }}>
       {/* Header */}
-      <div style={{ width: '100%', maxWidth: 440, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ width: '100%', maxWidth: 440, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
         <button onClick={() => setScreen('hub')} className="btn-glass" style={{ padding: '8px 14px', fontSize: 13 }}>
           <ArrowLeft size={16} /> {tt('वापस', 'Back', 'Wapas')}
         </button>
-        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>
+        <span style={{ flex: 1, textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>
           {tt('प्रगति रिपोर्ट', 'Progress Report', 'Progress Report')}
         </span>
-        <div style={{ width: 60 }} />
+        {isMobileView ? (
+          <div style={{ position: 'relative' }}>
+            <button onClick={() => setMenuOpen((open) => !open)} className="btn-glass" style={{ padding: '8px 10px' }}>
+              {menuOpen ? <X size={14} /> : <Menu size={14} />}
+            </button>
+            {menuOpen && (
+              <div className="glass-strong" style={{
+                position: 'absolute', top: 42, right: 0, minWidth: 180,
+                padding: 8, display: 'flex', flexDirection: 'column', gap: 6, zIndex: 30,
+              }}>
+                <button onClick={() => { setScreen('hub'); setMenuOpen(false) }} className="btn-glass" style={{ justifyContent: 'flex-start', padding: '8px 10px', fontSize: 12 }}>
+                  <ArrowLeft size={14} /> {tt('हब पर जाएं', 'Go to Hub', 'Hub par jao')}
+                </button>
+                <button onClick={() => { setScreen('certificate'); setMenuOpen(false) }} className="btn-glass" style={{ justifyContent: 'flex-start', padding: '8px 10px', fontSize: 12 }}>
+                  <Award size={14} /> Certificate
+                </button>
+                <button onClick={() => { setScreen('sakhisathi'); setMenuOpen(false) }} className="btn-glass" style={{ justifyContent: 'flex-start', padding: '8px 10px', fontSize: 12 }}>
+                  <Users size={14} /> {tt('SHG सिमुलेशन', 'SHG Simulation', 'SHG Simulation')}
+                </button>
+                <button onClick={() => { setScreen('suraksha'); setMenuOpen(false) }} className="btn-glass" style={{ justifyContent: 'flex-start', padding: '8px 10px', fontSize: 12 }}>
+                  <ShieldAlert size={14} /> {tt('सुरक्षा सायरन', 'Safety Siren', 'Suraksha Siren')}
+                </button>
+                <button onClick={() => { setScreen('zaroorat'); setMenuOpen(false) }} className="btn-glass" style={{ justifyContent: 'flex-start', padding: '8px 10px', fontSize: 12 }}>
+                  <Gamepad2 size={14} /> {tt('ज़रूरत vs ख्वाहिश', 'Needs vs Wants', 'Zaroorat vs Khwahish')}
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={{ width: 60 }} />
+        )}
       </div>
 
       {/* Profile */}

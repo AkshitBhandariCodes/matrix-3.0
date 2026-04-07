@@ -3,8 +3,10 @@ import { useGameStore, t3 } from '../store/gameStore'
 import { characterImages } from '../data/realms'
 import type { Realm, Challenge, Choice, Expression } from '../data/realms'
 import { VirtualJoystick } from '../components/VirtualJoystick'
+import { useResponsiveMode } from '../hooks/useResponsiveMode'
 import { speak as speakTTS } from '../utils/speech'
-import { ArrowLeft, Languages, Heart, Brain, ChevronRight, Volume2, VolumeX } from 'lucide-react'
+import { formatLearningContent, getAdaptiveLearningContent } from '../utils/learningContent'
+import { ArrowLeft, Award, Brain, ChevronRight, Heart, Languages, Menu, ShieldAlert, UserCircle, Users, Volume2, VolumeX, X } from 'lucide-react'
 
 // ═══════════════════════════════════════════════════════════════
 // CONSTANTS
@@ -161,13 +163,14 @@ export const RealmScreen: React.FC<Props> = ({ realm, realmNumber }) => {
   const {
     language, applyStatDelta, completeRealm, setScreen, cycleLang,
     playerName, startTransition, endTransition,
-    wrongCount, incrementWrongCount, resetWrongCount, stats, voiceMode,
+    wrongCount, incrementWrongCount, resetWrongCount, stats, voiceMode, toggleVoiceMode,
   } = useGameStore()
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const animRef = useRef(0)
   const frameRef = useRef(0)
+  const learningRequestRef = useRef(0)
 
   // Player & guide positions
   const posRef = useRef({ x: 100, y: 350 })
@@ -191,6 +194,8 @@ export const RealmScreen: React.FC<Props> = ({ realm, realmNumber }) => {
   const [showIntro, setShowIntro] = useState(true)
   const [typeIdx, setTypeIdx] = useState(0)
   const [dialogueText, setDialogueText] = useState('')
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [isGeneratingLearning, setIsGeneratingLearning] = useState(false)
 
   // Images
   const bgImgRef = useRef<HTMLImageElement | null>(null)
@@ -199,8 +204,10 @@ export const RealmScreen: React.FC<Props> = ({ realm, realmNumber }) => {
 
   const nearRef = useRef<Challenge | null>(null)
   const completedRef = useRef<Set<string>>(new Set())
+  const { isCompactView: isMobileView, isTouchInput } = useResponsiveMode()
 
   const tt = useCallback((hi: string, en: string, hinglish: string) => t3(hi, en, hinglish, language), [language])
+  const langLabel = language === 'hi' ? 'हि' : language === 'en' ? 'EN' : 'HG'
 
   useEffect(() => { endTransition() }, [endTransition])
 
@@ -241,6 +248,83 @@ export const RealmScreen: React.FC<Props> = ({ realm, realmNumber }) => {
   const speak = useCallback((text: string) => {
     speakTTS(text, language)
   }, [language])
+
+  const renderRealmMenu = () => (
+    <div style={{ position: 'relative', pointerEvents: 'all' }}>
+      <button onClick={() => setMenuOpen((open) => !open)} style={{
+        background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(12px)',
+        border: '1px solid rgba(255,255,255,0.18)', borderRadius: 10,
+        color: '#fff', padding: '7px 9px',
+        cursor: 'pointer', display: 'flex', alignItems: 'center',
+      }}>
+        {menuOpen ? <X size={16} /> : <Menu size={16} />}
+      </button>
+
+      {menuOpen && (
+        <div className="glass-strong" style={{
+          position: 'absolute', top: 40, right: 0, minWidth: 190,
+          padding: 8, display: 'flex', flexDirection: 'column', gap: 6,
+          borderRadius: 12, zIndex: 40,
+        }}>
+          <button onClick={() => { setScreen('profile'); setMenuOpen(false) }} style={{
+            background: 'rgba(167,139,250,0.24)', border: '1px solid rgba(167,139,250,0.45)',
+            borderRadius: 9, color: '#ede9fe', fontSize: 12, fontWeight: 800,
+            padding: '8px 10px', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            <UserCircle size={14} /> {tt('प्रोफाइल और प्रगति', 'Profile & Progress', 'Profile aur Progress')}
+          </button>
+
+          <button onClick={() => { setScreen('sakhisathi'); setMenuOpen(false) }} style={{
+            background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.45)',
+            borderRadius: 9, color: '#86efac', fontSize: 12, fontWeight: 800,
+            padding: '8px 10px', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            <Users size={14} /> {tt('SHG सिमुलेशन', 'SHG Simulation', 'SHG Simulation')}
+          </button>
+
+          <button onClick={() => { setScreen('suraksha'); setMenuOpen(false) }} style={{
+            background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.45)',
+            borderRadius: 9, color: '#fca5a5', fontSize: 12, fontWeight: 800,
+            padding: '8px 10px', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            <ShieldAlert size={14} /> {tt('सुरक्षा सायरन', 'Safety Siren', 'Suraksha Siren')}
+          </button>
+
+          <button onClick={() => { setScreen('certificate'); setMenuOpen(false) }} style={{
+            background: 'rgba(253,230,138,0.2)', border: '1px solid rgba(253,230,138,0.45)',
+            borderRadius: 9, color: '#fde68a', fontSize: 12, fontWeight: 800,
+            padding: '8px 10px', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            <Award size={14} /> Certificate
+          </button>
+
+          <button onClick={() => { toggleVoiceMode(); setMenuOpen(false) }} style={{
+            background: voiceMode ? 'rgba(167,139,250,0.25)' : 'rgba(255,255,255,0.12)',
+            border: '1px solid rgba(255,255,255,0.2)',
+            borderRadius: 9, color: '#fff', fontSize: 12, fontWeight: 800,
+            padding: '8px 10px', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            {voiceMode ? <Volume2 size={14} /> : <VolumeX size={14} />}
+            {tt('आवाज़ मोड', 'Voice Mode', 'Voice Mode')}
+          </button>
+
+          <button onClick={() => { cycleLang(); setMenuOpen(false) }} style={{
+            background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)',
+            borderRadius: 9, color: '#fde68a', fontSize: 12, fontWeight: 800,
+            padding: '8px 10px', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            <Languages size={14} /> {tt('भाषा', 'Language', 'Language')} {langLabel}
+          </button>
+        </div>
+      )}
+    </div>
+  )
 
   // ─── Keyboard ────────────────────────────────────────────
   const handleEnterChallenge = useCallback(() => {
@@ -543,7 +627,7 @@ export const RealmScreen: React.FC<Props> = ({ realm, realmNumber }) => {
 
   // ─── Dialogue handlers ───────────────────────────────────
   const advanceDialogue = () => {
-    if (!activeChallenge) return
+    if (!activeChallenge || isGeneratingLearning) return
     if (dialoguePhase === 'intro') {
       setDialoguePhase('scenario')
       const scenarioText = tt(activeChallenge.scenario_hi, activeChallenge.scenario_en, activeChallenge.scenario_hinglish)
@@ -558,33 +642,56 @@ export const RealmScreen: React.FC<Props> = ({ realm, realmNumber }) => {
     }
   }
 
-  const handleChoice = (choice: Choice) => {
+  const handleChoice = async (choice: Choice) => {
+    if (!activeChallenge || isGeneratingLearning) return
+
     setLastChoice(choice)
-    const feedbackText = tt(choice.feedback_hi, choice.feedback_en, choice.feedback_hinglish)
+    const nextWrongCount = choice.isGood ? 0 : wrongCount + 1
+    const loadingText = tt('सखी सोच रही है...', 'Sakhi is thinking...', 'Sakhi soch rahi hai...')
+    const requestId = learningRequestRef.current + 1
+    learningRequestRef.current = requestId
 
-    applyStatDelta(choice.outcome, feedbackText, choice.isGood)
-    setScore((s) => s + (choice.isGood ? 15 : 3))
+    setGuideExpression(choice.isGood ? 'happy' : nextWrongCount >= 2 ? 'angry' : 'sad')
+    setDialoguePhase(choice.isGood ? 'feedback' : 'explanation')
+    setDialogueText(loadingText)
+    setGuideBubble(loadingText)
+    setTypeIdx(0)
+    setIsGeneratingLearning(true)
 
-    if (choice.isGood) {
-      setGuideExpression('happy')
-      setDialoguePhase('feedback')
-      setDialogueText(feedbackText)
-      setGuideBubble(feedbackText)
-      speak(feedbackText)
-      resetWrongCount()
-    } else {
-      incrementWrongCount()
-      const newWrongCount = wrongCount + 1
-      setGuideExpression(newWrongCount >= 2 ? 'angry' : 'sad')
-      setDialoguePhase('explanation')
-      const explanationText = tt(choice.explanation_hi ?? '', choice.explanation_en ?? '', choice.explanation_hinglish ?? '')
-      setDialogueText(explanationText || feedbackText)
-      setGuideBubble(explanationText || feedbackText)
-      speak(explanationText || feedbackText)
+    try {
+      const learningContent = await getAdaptiveLearningContent({
+        realm,
+        challenge: activeChallenge,
+        choice,
+        language,
+        playerName,
+      })
+
+      if (learningRequestRef.current !== requestId) return
+
+      applyStatDelta(choice.outcome, learningContent.answer, choice.isGood)
+      setScore((s) => s + (choice.isGood ? 15 : 3))
+
+      if (choice.isGood) {
+        resetWrongCount()
+      } else {
+        incrementWrongCount()
+      }
+
+      const combinedText = formatLearningContent(learningContent, language)
+      setDialogueText(combinedText)
+      setGuideBubble(learningContent.answer)
+      speak(learningContent.answer)
+    } finally {
+      if (learningRequestRef.current === requestId) {
+        setIsGeneratingLearning(false)
+      }
     }
   }
 
   const closeDialogue = () => {
+    learningRequestRef.current += 1
+    setIsGeneratingLearning(false)
     if (activeChallenge) {
       const newCompleted = new Set(completedChallenges)
       newCompleted.add(activeChallenge.id)
@@ -615,6 +722,7 @@ export const RealmScreen: React.FC<Props> = ({ realm, realmNumber }) => {
     setShowDialogue(false)
     setLastChoice(null)
     setDialoguePhase('intro')
+    setMenuOpen(false)
   }
 
   const goBack = useCallback(() => {
@@ -653,6 +761,16 @@ export const RealmScreen: React.FC<Props> = ({ realm, realmNumber }) => {
         justifyContent: 'center', height: '100%', padding: '24px 20px', gap: 16,
         background: realm.bgGradient, animation: 'fadeIn 0.5s ease', overflow: 'auto',
       }}>
+        <div style={{
+          width: '100%', maxWidth: 360, display: 'flex',
+          justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <button onClick={goBack} className="btn-glass" style={{ padding: '8px 12px', fontSize: 12 }}>
+            <ArrowLeft size={14} /> {tt('वापस', 'Back', 'Wapas')}
+          </button>
+          {isMobileView ? renderRealmMenu() : <div style={{ width: 36 }} />}
+        </div>
+
         {/* Realm gate visual */}
         <div style={{
           width: 100, height: 100, borderRadius: '50%',
@@ -761,46 +879,78 @@ export const RealmScreen: React.FC<Props> = ({ realm, realmNumber }) => {
           <ArrowLeft size={18} />
         </button>
 
-        <div className="glass-strong" style={{
-          padding: '8px 14px', display: 'flex', gap: 12, alignItems: 'center', pointerEvents: 'all',
-        }}>
-          {/* Health */}
-          <div className="stat-bar-container">
-            <div className="stat-bar-icon" style={{ color: '#ef4444' }}>
-              <Heart size={16} fill="#ef4444" />
+        {isMobileView ? (
+          <div className="glass-strong" style={{
+            padding: '6px 8px', display: 'flex', gap: 8, alignItems: 'center', pointerEvents: 'all',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '3px 6px', borderRadius: 999,
+              background: 'rgba(239,68,68,0.12)', color: '#ef4444',
+              fontSize: 11, fontWeight: 800,
+            }}>
+              <Heart size={13} fill="#ef4444" />
+              <span>{stats.health}</span>
             </div>
-            <div className="stat-bar-track" style={{ background: '#3b0a0a', minWidth: 60 }}>
-              <div className="stat-bar-fill" style={{
-                width: `${stats.health}%`,
-                background: stats.health > 30 ? 'linear-gradient(90deg, #ef4444, #f87171)' : 'linear-gradient(90deg, #991b1b, #ef4444)',
-                boxShadow: stats.health <= 30 ? '0 0 8px rgba(239,68,68,0.5)' : 'none',
-              }} />
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '3px 6px', borderRadius: 999,
+              background: 'rgba(167,139,250,0.14)', color: '#a78bfa',
+              fontSize: 11, fontWeight: 800,
+            }}>
+              <Brain size={13} />
+              <span>{stats.wisdom}</span>
             </div>
-            <span className="stat-bar-label" style={{ color: '#ef4444' }}>{stats.health}</span>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '3px 6px', borderRadius: 999,
+              background: `${realm.color}22`, color: realm.color,
+              fontSize: 11, fontWeight: 800,
+            }}>
+              <span>{doneCount}/{challengeCount}</span>
+            </div>
           </div>
-          {/* Wisdom */}
-          <div className="stat-bar-container">
-            <div className="stat-bar-icon" style={{ color: '#a78bfa' }}>
-              <Brain size={16} />
+        ) : (
+          <div className="glass-strong" style={{
+            padding: '8px 14px', display: 'flex', gap: 12, alignItems: 'center', pointerEvents: 'all',
+          }}>
+            <div className="stat-bar-container">
+              <div className="stat-bar-icon" style={{ color: '#ef4444' }}>
+                <Heart size={16} fill="#ef4444" />
+              </div>
+              <div className="stat-bar-track" style={{ background: '#3b0a0a', minWidth: 60 }}>
+                <div className="stat-bar-fill" style={{
+                  width: `${stats.health}%`,
+                  background: stats.health > 30 ? 'linear-gradient(90deg, #ef4444, #f87171)' : 'linear-gradient(90deg, #991b1b, #ef4444)',
+                  boxShadow: stats.health <= 30 ? '0 0 8px rgba(239,68,68,0.5)' : 'none',
+                }} />
+              </div>
+              <span className="stat-bar-label" style={{ color: '#ef4444' }}>{stats.health}</span>
             </div>
-            <div className="stat-bar-track" style={{ background: '#1e0a3e', minWidth: 60 }}>
-              <div className="stat-bar-fill" style={{
-                width: `${stats.wisdom}%`,
-                background: 'linear-gradient(90deg, #7c3aed, #a78bfa)',
-              }} />
+            <div className="stat-bar-container">
+              <div className="stat-bar-icon" style={{ color: '#a78bfa' }}>
+                <Brain size={16} />
+              </div>
+              <div className="stat-bar-track" style={{ background: '#1e0a3e', minWidth: 60 }}>
+                <div className="stat-bar-fill" style={{
+                  width: `${stats.wisdom}%`,
+                  background: 'linear-gradient(90deg, #7c3aed, #a78bfa)',
+                }} />
+              </div>
+              <span className="stat-bar-label" style={{ color: '#a78bfa' }}>{stats.wisdom}</span>
             </div>
-            <span className="stat-bar-label" style={{ color: '#a78bfa' }}>{stats.wisdom}</span>
+            <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.1)' }} />
+            <span style={{ fontSize: 11, color: realm.color, fontWeight: 800 }}>
+              {doneCount}/{challengeCount}
+            </span>
           </div>
-          <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.1)' }} />
-          <span style={{ fontSize: 11, color: realm.color, fontWeight: 800 }}>
-            {doneCount}/{challengeCount}
-          </span>
-        </div>
+        )}
 
         <div style={{ flex: 1 }} />
 
+        {isMobileView ? renderRealmMenu() : (
         <div style={{ display: 'flex', gap: 6, pointerEvents: 'all' }}>
-          <button onClick={useGameStore.getState().toggleVoiceMode} style={{
+          <button onClick={toggleVoiceMode} style={{
             background: voiceMode ? 'rgba(167,139,250,0.3)' : 'rgba(0,0,0,0.6)',
             backdropFilter: 'blur(12px)',
             border: voiceMode ? '1px solid rgba(167,139,250,0.5)' : '1px solid rgba(255,255,255,0.12)',
@@ -816,20 +966,21 @@ export const RealmScreen: React.FC<Props> = ({ realm, realmNumber }) => {
             cursor: 'pointer', fontFamily: 'var(--font-primary)',
             display: 'flex', alignItems: 'center', gap: 4,
           }}>
-            <Languages size={14} /> {language === 'hi' ? 'हि' : language === 'en' ? 'EN' : 'HG'}
+            <Languages size={14} /> {langLabel}
           </button>
         </div>
+        )}
       </div>
 
       {/* ── Near challenge action button ─────────────────────── */}
       {nearChallenge && !completedChallenges.has(nearChallenge.id) && !showDialogue && (
         <div style={{
-          position: 'absolute', bottom: 160, left: '50%', transform: 'translateX(-50%)', zIndex: 20,
+          position: 'absolute', bottom: isTouchInput ? 170 : 160, left: '50%', transform: 'translateX(-50%)', zIndex: 20,
         }}>
           <button onClick={handleEnterChallenge} className="btn-primary" style={{
             background: realm.color, fontSize: 13, padding: '12px 22px',
             boxShadow: `0 6px 28px ${realm.color}88`,
-            animation: 'bounceBtn 0.8s ease-in-out infinite alternate',
+            animation: isTouchInput ? 'none' : 'bounceBtn 0.8s ease-in-out infinite alternate',
           }}>
             {tt(
               `${nearChallenge.title_hi} → चुनौती`,
@@ -841,11 +992,11 @@ export const RealmScreen: React.FC<Props> = ({ realm, realmNumber }) => {
       )}
 
       {/* ── Mobile joystick ──────────────────────────────────── */}
-      {!showDialogue && (
+      {!showDialogue && isTouchInput && (
         <VirtualJoystick
           onMove={handleJoystickMove}
           onStop={handleJoystickStop}
-          size={132}
+          size={isMobileView ? 126 : 132}
           bottom={20}
           left={18}
           zIndex={120}
@@ -860,7 +1011,9 @@ export const RealmScreen: React.FC<Props> = ({ realm, realmNumber }) => {
           <div className="glass-strong" style={{
             padding: '5px 10px', fontSize: 9, color: 'rgba(255,255,255,0.35)', fontWeight: 600,
           }}>
-            WASD {tt('चलो', 'Move', 'Chalo')} • E {tt('खोलो', 'Enter', 'Kholo')}
+            {isTouchInput
+              ? tt('Joystick drag करो • छोड़ो तो रुक जाओ', 'Drag joystick • Release to stop', 'Joystick drag karo • Chhodo to ruk jao')
+              : `WASD ${tt('चलो', 'Move', 'Chalo')} • E ${tt('खोलो', 'Enter', 'Kholo')}`}
           </div>
         </div>
       )}
@@ -926,7 +1079,7 @@ export const RealmScreen: React.FC<Props> = ({ realm, realmNumber }) => {
               }}>
                 <p style={{
                   color: dialoguePhase === 'explanation' ? '#fbbf24' : 'rgba(255,255,255,0.88)',
-                  fontSize: 13, lineHeight: 1.65, margin: 0,
+                  fontSize: 13, lineHeight: 1.65, margin: 0, whiteSpace: 'pre-line',
                 }}>
                   {dialoguePhase === 'explanation' && (
                     <span style={{ color: '#f87171', fontWeight: 800, marginRight: 6 }}>
@@ -991,7 +1144,7 @@ export const RealmScreen: React.FC<Props> = ({ realm, realmNumber }) => {
             )}
 
             {/* Close button for feedback/explanation */}
-            {(dialoguePhase === 'feedback' || dialoguePhase === 'explanation') && typeIdx >= dialogueText.length && (
+            {(dialoguePhase === 'feedback' || dialoguePhase === 'explanation') && !isGeneratingLearning && typeIdx >= dialogueText.length && (
               <button onClick={closeDialogue} className="btn-primary" style={{
                 background: lastChoice?.isGood ? '#10b981' : realm.color,
                 width: '100%', marginTop: 10, fontSize: 13,

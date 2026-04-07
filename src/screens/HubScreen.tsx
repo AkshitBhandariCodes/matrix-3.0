@@ -2,6 +2,7 @@
 import { useGameStore, t3 } from '../store/gameStore'
 import { realm1, realm2, realm3, realm4, realm5, characterImages } from '../data/realms'
 import { VirtualJoystick } from '../components/VirtualJoystick'
+import { useResponsiveMode } from '../hooks/useResponsiveMode'
 import { Heart, Brain, Languages, Award, DoorOpen, Trophy, Volume2, VolumeX, Menu, X, Lock, UserCircle, Users, ShieldAlert } from 'lucide-react'
 import hubBgImg from '../assets/environment/hub_bg.png'
 import { isRealmEnabled, type RealmScreen } from '../config/prototype'
@@ -221,7 +222,7 @@ export const HubScreen: React.FC = () => {
   const movingRef = useRef(false)
   const worldDimRef = useRef({ w: 900, h: 600 })
   const [menuOpen, setMenuOpen] = useState(false)
-  const [isMobileView, setIsMobileView] = useState(false)
+  const { isCompactView: isMobileView, isTouchInput } = useResponsiveMode()
 
   const tt = useCallback((hi: string, en: string, hinglish: string) => t3(hi, en, hinglish, language), [language])
   const langLabel = language === 'hi' ? '\u0939\u093f' : language === 'en' ? 'EN' : 'HG'
@@ -237,15 +238,6 @@ export const HubScreen: React.FC = () => {
     const pl = new Image(); pl.src = characterImages.sakhi
     pl.onload = () => { playerImageRef.current = pl }
   }, [endTransition])
-
-  useEffect(() => {
-    const media = window.matchMedia('(max-width: 860px)')
-    const handleChange = () => setIsMobileView(media.matches)
-    handleChange()
-
-    media.addEventListener('change', handleChange)
-    return () => media.removeEventListener('change', handleChange)
-  }, [])
 
   // Dynamic gate positions based on world dimensions
   const getGates = useCallback((ww: number, wh: number): Gate[] => [
@@ -715,13 +707,13 @@ export const HubScreen: React.FC = () => {
 
       {nearGate && (
         <div style={{
-          position: 'absolute', bottom: isMobileView ? 170 : 160, left: '50%', transform: 'translateX(-50%)', zIndex: 20,
+          position: 'absolute', bottom: isTouchInput ? 170 : 160, left: '50%', transform: 'translateX(-50%)', zIndex: 20,
         }}>
           {nearGate.enabled ? (
             <button onClick={enterNearGate} className="btn-primary" style={{
               background: nearGate.color, fontSize: 14, padding: '12px 24px',
               boxShadow: `0 6px 28px ${nearGate.color}88`,
-              animation: isMobileView ? 'none' : 'bounceBtn 0.8s ease-in-out infinite alternate',
+              animation: isTouchInput ? 'none' : 'bounceBtn 0.8s ease-in-out infinite alternate',
             }}>
               <DoorOpen size={18} />
               {`${nearGate.realmNumber}. ${tt(nearGate.label_hi, nearGate.label_en, nearGate.label_hinglish)}`}
@@ -739,13 +731,15 @@ export const HubScreen: React.FC = () => {
         </div>
       )}
 
-      <VirtualJoystick
-        onMove={handleJoystickMove}
-        onStop={handleJoystickStop}
-        size={isMobileView ? 110 : 120}
-        bottom={isMobileView ? 20 : 28}
-        left={isMobileView ? 14 : 28}
-      />
+      {isTouchInput && (
+        <VirtualJoystick
+          onMove={handleJoystickMove}
+          onStop={handleJoystickStop}
+          size={isMobileView ? 110 : 120}
+          bottom={isMobileView ? 20 : 28}
+          left={isMobileView ? 14 : 28}
+        />
+      )}
 
       <div style={{
         position: 'absolute', bottom: 14, right: 14, zIndex: 10, pointerEvents: 'none',
@@ -753,8 +747,8 @@ export const HubScreen: React.FC = () => {
         <div className="glass-strong" style={{
           padding: '5px 10px', fontSize: 9, color: 'rgba(255,255,255,0.35)', fontWeight: 600,
         }}>
-          {isMobileView
-            ? tt('Tap portal • Joystick चलो', 'Tap portal • Joystick move', 'Tap portal • Joystick chalo')
+          {isTouchInput
+            ? tt('Portal tap करो • Drag joystick, छोड़ो तो रुको', 'Tap portal • Drag joystick, release to stop', 'Portal tap karo • Drag joystick, chhodo to ruko')
             : `WASD ${tt('चलो', 'Move', 'Chalo')} • E ${tt('जाओ', 'Enter', 'Jaao')}`}
         </div>
       </div>

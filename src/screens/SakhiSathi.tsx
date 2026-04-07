@@ -3,6 +3,7 @@ import { useGameStore, t3 } from '../store/gameStore'
 import { characterImages } from '../data/realms'
 import { speak } from '../utils/speech'
 import { VirtualJoystick } from '../components/VirtualJoystick'
+import { useResponsiveMode } from '../hooks/useResponsiveMode'
 import realm5Bg from '../assets/environment/realm5_bg.png'
 import {
   ArrowLeft,
@@ -136,7 +137,6 @@ export const SakhiSathi: React.FC = () => {
   const [activeNpcId, setActiveNpcId] = useState<NpcId | null>(null)
   const [activityLog, setActivityLog] = useState<string[]>([])
   const [menuOpen, setMenuOpen] = useState(false)
-  const [isMobileView, setIsMobileView] = useState(false)
 
   const [playerPos, setPlayerPos] = useState({ x: 48, y: 56 })
   const playerRef = useRef(playerPos)
@@ -144,6 +144,7 @@ export const SakhiSathi: React.FC = () => {
   const joystickRef = useRef({ dx: 0, dy: 0 })
   const targetRef = useRef<{ x: number; y: number } | null>(null)
   const worldRef = useRef<HTMLDivElement>(null)
+  const { isCompactView: isMobileView, isTouchInput } = useResponsiveMode()
 
   const activeNpc = useMemo(() => npcs.find((npc) => npc.id === activeNpcId) ?? null, [activeNpcId])
 
@@ -360,14 +361,6 @@ export const SakhiSathi: React.FC = () => {
   }, [narrate])
 
   useEffect(() => {
-    const media = window.matchMedia('(max-width: 860px)')
-    const update = () => setIsMobileView(media.matches)
-    update()
-    media.addEventListener('change', update)
-    return () => media.removeEventListener('change', update)
-  }, [])
-
-  useEffect(() => {
     playerRef.current = playerPos
   }, [playerPos])
 
@@ -445,6 +438,8 @@ export const SakhiSathi: React.FC = () => {
   }, [language, paymentAlert, voiceMode])
 
   const handleWorldPointer = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    setMenuOpen(false)
+
     const targetEl = event.target as HTMLElement | null
     if (targetEl?.closest('[data-virtual-joystick="true"]')) return
 
@@ -476,6 +471,68 @@ export const SakhiSathi: React.FC = () => {
       gap: 10,
       overflow: 'hidden',
     }}>
+      {isMobileView && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={() => setScreen('hub')} className="btn-glass" style={{ padding: '8px 10px', fontSize: 11 }}>
+              <ArrowLeft size={14} />
+            </button>
+
+            <div style={{ flex: 1 }} />
+
+            <button onClick={advanceDay} className="btn-glass" style={{ padding: '8px 10px', fontSize: 11 }}>
+              <CalendarDays size={14} /> +1
+            </button>
+
+            <div style={{ position: 'relative' }}>
+              <button onClick={() => setMenuOpen((v) => !v)} className="btn-glass" style={{ padding: '8px 10px' }}>
+                {menuOpen ? <X size={14} /> : <Menu size={14} />}
+              </button>
+              {menuOpen && (
+                <div className="glass-strong" style={{
+                  position: 'absolute',
+                  top: 42,
+                  right: 0,
+                  minWidth: 180,
+                  padding: 8,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                  zIndex: 60,
+                }}>
+                  <button onClick={() => { setScreen('profile'); setMenuOpen(false) }} className="btn-glass" style={{ justifyContent: 'flex-start', padding: '8px 10px', fontSize: 12 }}>
+                    <UserCircle size={14} /> {tt('प्रोफाइल', 'Profile', 'Profile')}
+                  </button>
+                  <button onClick={() => { setScreen('certificate'); setMenuOpen(false) }} className="btn-glass" style={{ justifyContent: 'flex-start', padding: '8px 10px', fontSize: 12 }}>
+                    <Award size={14} /> Certificate
+                  </button>
+                  <button onClick={() => { toggleVoiceMode(); setMenuOpen(false) }} className="btn-glass" style={{ justifyContent: 'flex-start', padding: '8px 10px', fontSize: 12 }}>
+                    {voiceMode ? <Volume2 size={14} /> : <VolumeX size={14} />} Voice
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div style={{ textAlign: 'center' }}>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              color: '#10b981',
+              fontWeight: 900,
+              fontSize: 16,
+            }}>
+              <Users size={18} /> {tt('SHG 3D दुनिया', 'SHG 3D World', 'SHG 3D World')}
+            </div>
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, fontWeight: 600, marginTop: 4 }}>
+              {tt('महिला पात्र, लोन, किस्त और सरकारी योजनाएं', 'Women NPCs, loans, repayment, and schemes', 'Women NPCs, loan, repayment aur schemes')}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isMobileView && (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <button onClick={() => setScreen('hub')} className="btn-glass" style={{ padding: '8px 12px', fontSize: 12 }}>
           <ArrowLeft size={14} /> {tt('वापस', 'Back', 'Wapas')}
@@ -535,6 +592,7 @@ export const SakhiSathi: React.FC = () => {
           </button>
         )}
       </div>
+      )}
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <div className="glass" style={{ padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -696,7 +754,7 @@ export const SakhiSathi: React.FC = () => {
           <div style={{
             position: 'absolute',
             left: '50%',
-            bottom: isMobileView ? 170 : 150,
+            bottom: isTouchInput ? 170 : 150,
             transform: 'translateX(-50%)',
             zIndex: 25,
           }}>
@@ -706,19 +764,21 @@ export const SakhiSathi: React.FC = () => {
           </div>
         )}
 
-        <VirtualJoystick
-          onMove={(dx, dy) => { joystickRef.current = { dx, dy } }}
-          onStop={() => { joystickRef.current = { dx: 0, dy: 0 } }}
-          size={isMobileView ? 106 : 114}
-          bottom={isMobileView ? 16 : 20}
-          left={isMobileView ? 12 : 18}
-          zIndex={30}
-        />
+        {isTouchInput && (
+          <VirtualJoystick
+            onMove={(dx, dy) => { joystickRef.current = { dx, dy } }}
+            onStop={() => { joystickRef.current = { dx: 0, dy: 0 } }}
+            size={isMobileView ? 106 : 114}
+            bottom={isMobileView ? 16 : 20}
+            left={isMobileView ? 12 : 18}
+            zIndex={30}
+          />
+        )}
 
         <div style={{ position: 'absolute', bottom: 10, right: 10, background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '6px 9px', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.75)', zIndex: 15 }}>
-          {isMobileView
-            ? tt('Tap NPC या joystick से चलें', 'Tap NPC or use joystick', 'Tap NPC ya joystick se chalo')
-            : tt('Tap to move • Joystick/WASD', 'Tap to move • Joystick/WASD', 'Tap se move • Joystick/WASD')}
+          {isTouchInput
+            ? tt('NPC tap करें या joystick drag करें', 'Tap NPC or drag joystick', 'NPC tap karo ya joystick drag karo')
+            : tt('Tap to move • WASD', 'Tap to move • WASD', 'Tap se move • WASD')}
         </div>
       </div>
 
