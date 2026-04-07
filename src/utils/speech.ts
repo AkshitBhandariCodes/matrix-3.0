@@ -13,20 +13,21 @@ interface SpeakOptions {
 }
 
 export interface VoiceEngineInfo {
-  provider: 'elevenlabs' | 'browser-fallback'
+  provider: 'gemini-tts' | 'browser-fallback'
   online: boolean
   apiConfigured: boolean
   voiceId: string
   modelId: string
 }
 
-const ELEVENLABS_API_KEY = (import.meta.env.VITE_ELEVENLABS_API_KEY as string | undefined)?.trim() ?? ''
-const ELEVENLABS_VOICE_ID = (import.meta.env.VITE_ELEVENLABS_VOICE_ID as string | undefined)?.trim() || 'trxRCYtDC6qFREKq6Ek2'
-const ELEVENLABS_MODEL_ID = (import.meta.env.VITE_ELEVENLABS_MODEL_ID as string | undefined)?.trim() || 'eleven_multilingual_v2'
-const ELEVENLABS_BASE_URL = (import.meta.env.VITE_ELEVENLABS_BASE_URL as string | undefined)?.trim() || 'https://api.elevenlabs.io'
+const GEMINI_API_BASE_URL = (import.meta.env.VITE_GEMINI_API_BASE_URL as string | undefined)?.trim() || 'https://generativelanguage.googleapis.com/v1beta'
+const GEMINI_API_KEY = (import.meta.env.VITE_GEMINI_API_KEY as string | undefined)?.trim() || ''
+const GEMINI_TTS_MODEL = (import.meta.env.VITE_GEMINI_TTS_MODEL as string | undefined)?.trim() || 'gemini-2.5-flash-preview-tts'
+const GEMINI_TTS_VOICE = (import.meta.env.VITE_GEMINI_TTS_VOICE as string | undefined)?.trim() || 'Achird'
 
-const SAKHI_AUDIO_CACHE = 'sakhi-audio-v1'
-const SAKHI_AUDIO_CACHE_LIMIT_BYTES = 5 * 1024 * 1024
+const SAKHI_AUDIO_CACHE = 'sakhi-audio-v2'
+const SAKHI_AUDIO_CACHE_LIMIT_BYTES = 8 * 1024 * 1024
+const GEMINI_TTS_SAMPLE_RATE = 24000
 
 export const SAKHI_PHRASES = [
   'Namaste Sakhi!',
@@ -43,13 +44,6 @@ let activeAudio: HTMLAudioElement | null = null
 let cachedHindiVoice: SpeechSynthesisVoice | null = null
 let cachedEnglishVoice: SpeechSynthesisVoice | null = null
 
-const STYLE_BY_EMOTION: Record<SpeakEmotion, number> = {
-  friendly: 0.2,
-  excited: 0.45,
-  calm: 0.1,
-  urgent: 0.32,
-}
-
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
 }
@@ -62,16 +56,16 @@ function hasWebSpeech() {
   return typeof window !== 'undefined' && 'speechSynthesis' in window
 }
 
-function hasElevenLabsConfig() {
-  return ELEVENLABS_API_KEY.length > 0
+function hasGeminiTtsConfig() {
+  return GEMINI_API_KEY.length > 0
 }
 
 function canUseCacheApi() {
   return typeof window !== 'undefined' && 'caches' in window
 }
 
-function cacheKeyForText(text: string) {
-  return `${ELEVENLABS_BASE_URL}/v1/text-to-speech-cache/${ELEVENLABS_VOICE_ID}?text=${encodeURIComponent(text)}`
+function cacheKeyForText(text: string, lang: SpeechLang, emotion: SpeakEmotion) {
+  return `${GEMINI_API_BASE_URL}/tts-cache/${GEMINI_TTS_MODEL}/${GEMINI_TTS_VOICE}/${lang}/${emotion}?text=${encodeURIComponent(text)}`
 }
 
 async function openAudioCache() {
@@ -113,26 +107,26 @@ async function fitBlobInCache(cache: Cache, incomingBlobSize: number) {
   }
 }
 
-async function getCachedAudio(text: string): Promise<Blob | null> {
+async function getCachedAudio(text: string, lang: SpeechLang, emotion: SpeakEmotion): Promise<Blob | null> {
   const cache = await openAudioCache()
   if (!cache) return null
 
-  const request = new Request(cacheKeyForText(text))
+  const request = new Request(cacheKeyForText(text, lang, emotion))
   const response = await cache.match(request)
   if (!response) return null
 
   return response.clone().blob()
 }
 
-async function cacheAudio(text: string, blob: Blob) {
+async function cacheAudio(text: string, lang: SpeechLang, emotion: SpeakEmotion, blob: Blob) {
   const cache = await openAudioCache()
   if (!cache) return
 
   await fitBlobInCache(cache, blob.size)
-  const request = new Request(cacheKeyForText(text))
+  const request = new Request(cacheKeyForText(text, lang, emotion))
   const response = new Response(blob, {
     headers: {
-      'Content-Type': 'audio/mpeg',
+      'Content-Type': 'audio/wav',
       'Cache-Control': 'max-age=604800',
     },
   })
@@ -319,53 +313,168 @@ export function speakFallback(text: string, lang: SpeechLang, options: SpeakOpti
   return null
 }
 
-async function requestElevenLabsAudio(
+function getVoiceDirection(lang: SpeechLang, emotion: SpeakEmotion) {
+  const style = emotion === 'urgent'
+    ? 'clear, focused, slightly urgent but still supportive'
+    : emotion === 'excited'
+      ? 'encouraging, energetic, and celebratory'
+      : emotion === 'calm'
+        ? 'steady, warm, and reassuring'
+        : 'friendly, caring, and easy to understand'
+
+  const accent = lang === 'hi'
+    ? 'Natural Indian Hindi with very clear pronunciation.'
+    : lang === 'en'
+      ? 'Indian English with warm, clear pronunciation.'
+      : 'Natural Indian Hinglish with smooth Hindi-English code switching and strong Hindi pronunciation.'
+
+  return { style, accent }
+}
+
+function buildGeminiTtsPrompt(text: string, lang: SpeechLang, emotion: SpeakEmotion) {
+  const { style, accent } = getVoiceDirection(lang, emotion)
+
+  return [
+    '# AUDIO PROFILE: Sakhi Guide',
+    '## THE SCENE: A supportive mentor is guiding a learner inside a mobile financial literacy game.',
+    '### DIRECTORS NOTES',
+    `Style: ${style}`,
+    'Pacing: Medium pace, very clear, mobile-friendly, short pauses at commas and full stops.',
+    `Accent: ${accent}`,
+    '### TRANSCRIPT',
+    text,
+  ].join('\n')
+}
+
+function base64ToBytes(base64: string) {
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  return bytes
+}
+
+function writeAscii(view: DataView, offset: number, value: string) {
+  for (let i = 0; i < value.length; i += 1) {
+    view.setUint8(offset + i, value.charCodeAt(i))
+  }
+}
+
+function pcmToWavBlob(pcmBytes: Uint8Array, sampleRate = GEMINI_TTS_SAMPLE_RATE, channels = 1, bitsPerSample = 16) {
+  const header = new ArrayBuffer(44)
+  const view = new DataView(header)
+  const byteRate = sampleRate * channels * (bitsPerSample / 8)
+  const blockAlign = channels * (bitsPerSample / 8)
+  const audioBytes = new Uint8Array(pcmBytes.byteLength)
+  audioBytes.set(pcmBytes)
+
+  writeAscii(view, 0, 'RIFF')
+  view.setUint32(4, 36 + pcmBytes.length, true)
+  writeAscii(view, 8, 'WAVE')
+  writeAscii(view, 12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, channels, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, byteRate, true)
+  view.setUint16(32, blockAlign, true)
+  view.setUint16(34, bitsPerSample, true)
+  writeAscii(view, 36, 'data')
+  view.setUint32(40, pcmBytes.length, true)
+
+  return new Blob([header, audioBytes.buffer], { type: 'audio/wav' })
+}
+
+function extractGeminiAudioBase64(payload: unknown) {
+  if (!payload || typeof payload !== 'object') return null
+
+  const record = payload as Record<string, unknown>
+  const candidates = Array.isArray(record.candidates) ? record.candidates : []
+
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== 'object') continue
+    const content = (candidate as Record<string, unknown>).content
+    if (!content || typeof content !== 'object') continue
+    const parts = Array.isArray((content as Record<string, unknown>).parts)
+      ? (content as Record<string, unknown>).parts as Array<Record<string, unknown>>
+      : []
+
+    for (const part of parts) {
+      const inlineData = part.inlineData
+      if (!inlineData || typeof inlineData !== 'object') continue
+      const data = (inlineData as Record<string, unknown>).data
+      if (typeof data === 'string' && data.trim()) {
+        return data
+      }
+    }
+  }
+
+  return null
+}
+
+async function requestGeminiAudio(
   text: string,
   {
+    lang,
     emotion = 'friendly',
     cacheable = true,
   }: {
+    lang: SpeechLang
     emotion?: SpeakEmotion
     cacheable?: boolean
-  } = {},
+  },
 ): Promise<Blob | null> {
-  if (!hasElevenLabsConfig()) return null
+  if (!hasGeminiTtsConfig()) return null
 
   if (cacheable) {
-    const cached = await getCachedAudio(text)
+    const cached = await getCachedAudio(text, lang, emotion)
     if (cached) return cached
   }
 
-  const response = await fetch(`${ELEVENLABS_BASE_URL}/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`, {
+  const response = await fetch(`${GEMINI_API_BASE_URL}/models/${encodeURIComponent(GEMINI_TTS_MODEL)}:generateContent`, {
     method: 'POST',
     headers: {
-      Accept: 'audio/mpeg',
       'Content-Type': 'application/json',
-      'xi-api-key': ELEVENLABS_API_KEY,
+      'x-goog-api-key': GEMINI_API_KEY,
     },
     body: JSON.stringify({
-      text,
-      model_id: ELEVENLABS_MODEL_ID,
-      voice_settings: {
-        stability: 0.5,
-        similarity_boost: 0.75,
-        style: STYLE_BY_EMOTION[emotion] ?? STYLE_BY_EMOTION.friendly,
-        use_speaker_boost: true,
+      contents: [
+        {
+          parts: [
+            {
+              text: buildGeminiTtsPrompt(text, lang, emotion),
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        responseModalities: ['AUDIO'],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: {
+              voiceName: GEMINI_TTS_VOICE,
+            },
+          },
+        },
       },
     }),
   })
 
   if (!response.ok) {
-    throw new Error(`ElevenLabs TTS failed with status ${response.status}`)
+    throw new Error(`Gemini TTS failed with status ${response.status}`)
   }
 
-  const blob = await response.blob()
-  if (!blob.size) {
-    throw new Error('ElevenLabs returned empty audio')
+  const json = await response.json()
+  const base64Audio = extractGeminiAudioBase64(json)
+  if (!base64Audio) {
+    throw new Error('Gemini TTS returned no audio payload')
   }
+
+  const blob = pcmToWavBlob(base64ToBytes(base64Audio))
 
   if (cacheable) {
-    void cacheAudio(text, blob)
+    void cacheAudio(text, lang, emotion, blob)
   }
 
   return blob
@@ -399,11 +508,11 @@ async function playAudioBlob(blob: Blob, speed = 1): Promise<HTMLAudioElement | 
 
 export function getVoiceEngineInfo(): VoiceEngineInfo {
   return {
-    provider: isOnline() && hasElevenLabsConfig() ? 'elevenlabs' : 'browser-fallback',
+    provider: isOnline() && hasGeminiTtsConfig() ? 'gemini-tts' : 'browser-fallback',
     online: isOnline(),
-    apiConfigured: hasElevenLabsConfig(),
-    voiceId: ELEVENLABS_VOICE_ID,
-    modelId: ELEVENLABS_MODEL_ID,
+    apiConfigured: hasGeminiTtsConfig(),
+    voiceId: GEMINI_TTS_VOICE,
+    modelId: GEMINI_TTS_MODEL,
   }
 }
 
@@ -428,19 +537,19 @@ export async function sakhiSpeak(
     stopSpeaking()
   }
 
-  if (!isOnline() || !hasElevenLabsConfig()) {
+  if (!isOnline() || !hasGeminiTtsConfig()) {
     return speakFallback(speechText, lang, { ...fallbackOptions, interrupt: false })
   }
 
   try {
-    const blob = await requestElevenLabsAudio(speechText, { emotion, cacheable })
+    const blob = await requestGeminiAudio(speechText, { lang, emotion, cacheable })
     if (blob) {
       const audio = await playAudioBlob(blob, speed)
       if (audio) return audio
     }
   } catch {
     if (import.meta.env.DEV) {
-      console.warn('ElevenLabs failed, using fallback Web Speech')
+      console.warn('Gemini TTS failed, using fallback Web Speech')
     }
   }
 
@@ -463,13 +572,13 @@ export function stopSpeaking() {
 }
 
 export async function preloadCriticalAudio() {
-  if (!isOnline() || !hasElevenLabsConfig()) return
+  if (!isOnline() || !hasGeminiTtsConfig()) return
 
   for (const phrase of SAKHI_PHRASES) {
     try {
-      await requestElevenLabsAudio(phrase, { emotion: 'friendly', cacheable: true })
+      await requestGeminiAudio(phrase, { lang: 'hinglish', emotion: 'friendly', cacheable: true })
     } catch {
-      // Ignore preload failures; fallback handles runtime.
+      // Ignore preload failures; runtime fallback handles it.
     }
   }
 }

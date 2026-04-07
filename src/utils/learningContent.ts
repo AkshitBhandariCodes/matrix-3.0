@@ -162,7 +162,7 @@ function buildSchemeGuidePrompt({ scheme, language }: SchemeGuideRequest) {
       : 'Hinglish'
 
   return [
-    'You are generating a very short voice-friendly scheme guide for a mobile SHG learning game.',
+    'You are generating a very short voice-friendly government scheme guide for a mobile women-first learning app.',
     'Ground every line only in the provided static data.',
     'Do not invent new numbers, benefits, rules, or websites.',
     'Keep the output brief, practical, and easy to hear in audio.',
