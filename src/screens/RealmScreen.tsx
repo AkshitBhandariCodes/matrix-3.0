@@ -5,7 +5,7 @@ import type { Realm, Challenge, Choice, Expression } from '../data/realms'
 import { VirtualJoystick } from '../components/VirtualJoystick'
 import { useResponsiveMode } from '../hooks/useResponsiveMode'
 import { speak as speakTTS } from '../utils/speech'
-import { formatLearningContent, getAdaptiveLearningContent } from '../utils/learningContent'
+import { formatLearningContent, formatLearningContentForSpeech, getAdaptiveLearningContent } from '../utils/learningContent'
 import { ArrowLeft, Award, Brain, ChevronRight, Heart, Languages, Menu, ShieldAlert, UserCircle, Users, Volume2, VolumeX, X } from 'lucide-react'
 
 // ═══════════════════════════════════════════════════════════════
@@ -679,9 +679,10 @@ export const RealmScreen: React.FC<Props> = ({ realm, realmNumber }) => {
       }
 
       const combinedText = formatLearningContent(learningContent, language)
+      const speechText = formatLearningContentForSpeech(learningContent)
       setDialogueText(combinedText)
       setGuideBubble(learningContent.answer)
-      speak(learningContent.answer)
+      speak(speechText)
     } finally {
       if (learningRequestRef.current === requestId) {
         setIsGeneratingLearning(false)

@@ -509,6 +509,13 @@ export function formatSchemeGuideForSpeech(content: SchemeGuideContent) {
   return [content.title, content.explanation, content.action].filter(Boolean).join('. ')
 }
 
+export function formatLearningContentForSpeech(content: LearningContent) {
+  return [content.answer, content.explanation, content.learning]
+    .map((section) => section.trim())
+    .filter((section, index, sections) => Boolean(section) && sections.indexOf(section) === index)
+    .join('. ')
+}
+
 export function formatLearningContent(content: LearningContent, language: Language) {
   const labels = language === 'hi'
     ? { answer: 'Uttar', explanation: 'Samjho', learning: 'Seekh' }
