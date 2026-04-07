@@ -433,6 +433,14 @@ export const SakhiSathi: React.FC = () => {
     }
   }, [])
 
+  const handleJoystickMove = useCallback((dx: number, dy: number) => {
+    joystickRef.current = { dx, dy }
+  }, [])
+
+  const handleJoystickStop = useCallback(() => {
+    joystickRef.current = { dx: 0, dy: 0 }
+  }, [])
+
   useEffect(() => {
     let raf = 0
     const speed = 0.7
@@ -820,8 +828,8 @@ export const SakhiSathi: React.FC = () => {
 
         {isTouchInput && (
           <VirtualJoystick
-            onMove={(dx, dy) => { joystickRef.current = { dx, dy } }}
-            onStop={() => { joystickRef.current = { dx: 0, dy: 0 } }}
+            onMove={handleJoystickMove}
+            onStop={handleJoystickStop}
             size={isMobileView ? 106 : 114}
             bottom={isMobileView ? 16 : 20}
             left={isMobileView ? 12 : 18}
