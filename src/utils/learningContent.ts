@@ -1,12 +1,6 @@
 import type { Challenge, Choice, Realm } from '../data/realms'
-import type { Language } from '../store/gameStore'
-
-export interface LearningContent {
-  answer: string
-  explanation: string
-  learning: string
-  source: 'openai' | 'static'
-}
+import { useGameStore, type Language } from '../store/gameStore'
+import type { LearningContent } from '../types/learning'
 
 interface LearningRequest {
   realm: Realm
@@ -16,11 +10,9 @@ interface LearningRequest {
   playerName: string
 }
 
-const OPENAI_PROXY_URL = import.meta.env.VITE_OPENAI_PROXY_URL?.trim()
-const OPENAI_API_BASE_URL = import.meta.env.VITE_OPENAI_API_BASE_URL?.trim() || 'https://api.openai.com/v1'
-const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY?.trim()
-const OPENAI_MODEL = import.meta.env.VITE_OPENAI_MODEL?.trim() || 'gpt-5.4-mini'
-const CACHE_KEY = 'sakhi-learning-cache-v1'
+const GEMINI_API_BASE_URL = import.meta.env.VITE_GEMINI_API_BASE_URL?.trim() || 'https://generativelanguage.googleapis.com/v1beta'
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY?.trim()
+const GEMINI_MODEL = import.meta.env.VITE_GEMINI_MODEL?.trim() || 'gemini-2.5-flash'
 
 function t3(hi: string, en: string, hinglish: string, language: Language) {
   if (language === 'hi') return hi
@@ -46,33 +38,16 @@ function getFallbackLearningContent({ choice, language }: LearningRequest): Lear
 }
 
 function getCacheEntry(key: string): LearningContent | null {
-  if (typeof window === 'undefined') return null
-
-  try {
-    const raw = window.localStorage.getItem(CACHE_KEY)
-    if (!raw) return null
-    const cache = JSON.parse(raw) as Record<string, LearningContent>
-    return cache[key] ?? null
-  } catch {
-    return null
-  }
+  return useGameStore.getState().learningContentCache[key] ?? null
 }
 
 function setCacheEntry(key: string, value: LearningContent) {
-  if (typeof window === 'undefined') return
-
-  try {
-    const raw = window.localStorage.getItem(CACHE_KEY)
-    const cache = raw ? JSON.parse(raw) as Record<string, LearningContent> : {}
-    cache[key] = value
-    window.localStorage.setItem(CACHE_KEY, JSON.stringify(cache))
-  } catch {
-    // Ignore cache failures on restricted browsers.
-  }
+  useGameStore.getState().setLearningContentCacheEntry(key, value)
 }
 
 function getCacheKey({ realm, challenge, choice, language }: LearningRequest) {
-  return [realm.id, challenge.id, choice.id, language, OPENAI_MODEL].join(':')
+  const mode = realm.id === 'realm5' && GEMINI_API_KEY ? 'gemini' : 'static'
+  return [realm.id, challenge.id, choice.id, language, GEMINI_MODEL, mode].join(':')
 }
 
 function buildPrompt({ realm, challenge, choice, language, playerName }: LearningRequest) {
@@ -84,11 +59,14 @@ function buildPrompt({ realm, challenge, choice, language, playerName }: Learnin
 
   return [
     'You are generating short educational feedback for a mobile financial-literacy game.',
+    'The question must stay tied to the provided static data.',
     'Ground every line only in the provided static data.',
-    'Do not invent new schemes, numbers, facts, or characters.',
+    'Do not invent new schemes, numbers, facts, links, or characters.',
     'Keep each field concise and friendly for low-end mobile screens.',
+    'If the choice is correct, appreciate briefly and reinforce why it is right.',
+    'If the choice is wrong, explain gently and clearly what should happen instead.',
     `Write only in ${requestedLanguage}.`,
-    'Return strict JSON with keys: answer, explanation, learning.',
+    'Return strict JSON only with keys: answer, explanation, learning.',
     '',
     'Static game data:',
     JSON.stringify({
@@ -140,32 +118,31 @@ function buildPrompt({ realm, challenge, choice, language, playerName }: Learnin
   ].join('\n')
 }
 
-function extractTextPayload(payload: unknown) {
-  if (!payload || typeof payload !== 'object') return null
+function parseLearningJson(rawText: string | null) {
+  if (!rawText) return null
 
-  const record = payload as Record<string, unknown>
-  if (typeof record.answer === 'string' && typeof record.explanation === 'string' && typeof record.learning === 'string') {
-    return {
-      answer: record.answer,
-      explanation: record.explanation,
-      learning: record.learning,
+  const trimmed = rawText.trim()
+  if (!trimmed) return null
+
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>
+    if (typeof parsed.answer === 'string' && typeof parsed.explanation === 'string' && typeof parsed.learning === 'string') {
+      return {
+        answer: parsed.answer,
+        explanation: parsed.explanation,
+        learning: parsed.learning,
+      }
     }
+  } catch {
+    // Fall through and try extracting the JSON object from surrounding text.
   }
 
-  const outputText = typeof record.output_text === 'string'
-    ? record.output_text
-    : typeof record.text === 'string'
-      ? record.text
-      : null
-
-  if (!outputText) return null
-
-  const firstBrace = outputText.indexOf('{')
-  const lastBrace = outputText.lastIndexOf('}')
+  const firstBrace = trimmed.indexOf('{')
+  const lastBrace = trimmed.lastIndexOf('}')
   if (firstBrace === -1 || lastBrace === -1 || firstBrace >= lastBrace) return null
 
   try {
-    const parsed = JSON.parse(outputText.slice(firstBrace, lastBrace + 1)) as Record<string, unknown>
+    const parsed = JSON.parse(trimmed.slice(firstBrace, lastBrace + 1)) as Record<string, unknown>
     if (typeof parsed.answer === 'string' && typeof parsed.explanation === 'string' && typeof parsed.learning === 'string') {
       return {
         answer: parsed.answer,
@@ -180,47 +157,78 @@ function extractTextPayload(payload: unknown) {
   return null
 }
 
-async function requestOpenAILearningContent(request: LearningRequest) {
-  const prompt = buildPrompt(request)
+function extractTextPayload(payload: unknown) {
+  if (!payload) return null
 
-  if (OPENAI_PROXY_URL) {
-    const response = await fetch(OPENAI_PROXY_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: OPENAI_MODEL,
-        input: prompt,
-      }),
-    })
+  if (typeof payload === 'string') {
+    return parseLearningJson(payload)
+  }
 
-    if (!response.ok) {
-      throw new Error(`Proxy request failed with ${response.status}`)
+  if (typeof payload !== 'object') return null
+
+  const record = payload as Record<string, unknown>
+  if (typeof record.answer === 'string' && typeof record.explanation === 'string' && typeof record.learning === 'string') {
+    return {
+      answer: record.answer,
+      explanation: record.explanation,
+      learning: record.learning,
     }
-
-    return extractTextPayload(await response.json())
   }
 
-  if (!OPENAI_API_KEY) {
-    return null
+  const directText = typeof record.text === 'string'
+    ? record.text
+    : typeof record.output_text === 'string'
+      ? record.output_text
+      : null
+
+  if (directText) {
+    return parseLearningJson(directText)
   }
 
-  const response = await fetch(`${OPENAI_API_BASE_URL}/responses`, {
+  const candidates = Array.isArray(record.candidates) ? record.candidates : []
+  const candidateText = candidates
+    .flatMap((candidate) => {
+      if (!candidate || typeof candidate !== 'object') return []
+      const content = (candidate as Record<string, unknown>).content
+      if (!content || typeof content !== 'object') return []
+      const parts = Array.isArray((content as Record<string, unknown>).parts)
+        ? (content as Record<string, unknown>).parts as Array<Record<string, unknown>>
+        : []
+      return parts
+        .map((part) => typeof part?.text === 'string' ? part.text : '')
+        .filter(Boolean)
+    })
+    .join('\n')
+
+  return parseLearningJson(candidateText || null)
+}
+
+async function requestGeminiLearningContent(request: LearningRequest) {
+  if (!GEMINI_API_KEY) return null
+
+  const response = await fetch(`${GEMINI_API_BASE_URL}/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      'x-goog-api-key': GEMINI_API_KEY,
     },
     body: JSON.stringify({
-      model: OPENAI_MODEL,
-      input: prompt,
-      max_output_tokens: 220,
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: buildPrompt(request) }],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.4,
+        maxOutputTokens: 240,
+        responseMimeType: 'application/json',
+      },
     }),
   })
 
   if (!response.ok) {
-    throw new Error(`OpenAI request failed with ${response.status}`)
+    throw new Error(`Gemini request failed with ${response.status}`)
   }
 
   return extractTextPayload(await response.json())
@@ -228,42 +236,48 @@ async function requestOpenAILearningContent(request: LearningRequest) {
 
 export async function getAdaptiveLearningContent(request: LearningRequest): Promise<LearningContent> {
   const fallback = getFallbackLearningContent(request)
+  const cacheKey = getCacheKey(request)
 
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    setCacheEntry(cacheKey, fallback)
     return fallback
   }
 
-  const cacheKey = getCacheKey(request)
   const cached = getCacheEntry(cacheKey)
   if (cached) {
     return cached
   }
 
-  if (!OPENAI_PROXY_URL && !OPENAI_API_KEY) {
+  if (request.realm.id !== 'realm5' || !GEMINI_API_KEY) {
+    setCacheEntry(cacheKey, fallback)
     return fallback
   }
 
   try {
-    const content = await requestOpenAILearningContent(request)
-    if (!content) return fallback
+    const content = await requestGeminiLearningContent(request)
+    if (!content) {
+      setCacheEntry(cacheKey, fallback)
+      return fallback
+    }
 
     const normalized: LearningContent = {
       answer: content.answer.trim() || fallback.answer,
       explanation: content.explanation.trim() || fallback.explanation,
       learning: content.learning.trim() || fallback.learning,
-      source: 'openai',
+      source: 'gemini',
     }
 
     setCacheEntry(cacheKey, normalized)
     return normalized
   } catch {
+    setCacheEntry(cacheKey, fallback)
     return fallback
   }
 }
 
 export function formatLearningContent(content: LearningContent, language: Language) {
   const labels = language === 'hi'
-    ? { answer: 'उत्तर', explanation: 'समझ', learning: 'सीख' }
+    ? { answer: 'Uttar', explanation: 'Samjho', learning: 'Seekh' }
     : language === 'en'
       ? { answer: 'Answer', explanation: 'Explanation', learning: 'Learning' }
       : { answer: 'Answer', explanation: 'Samjho', learning: 'Learning' }

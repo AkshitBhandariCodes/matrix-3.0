@@ -983,9 +983,9 @@ export const RealmScreen: React.FC<Props> = ({ realm, realmNumber }) => {
             animation: isTouchInput ? 'none' : 'bounceBtn 0.8s ease-in-out infinite alternate',
           }}>
             {tt(
-              `${nearChallenge.title_hi} → चुनौती`,
-              `${nearChallenge.title_en} → Challenge`,
-              `${nearChallenge.title_hinglish} → Challenge`,
+              realm.id === 'realm5' ? `${nearChallenge.title_hi} → योजना` : `${nearChallenge.title_hi} → चुनौती`,
+              realm.id === 'realm5' ? `${nearChallenge.title_en} → Scheme` : `${nearChallenge.title_en} → Challenge`,
+              realm.id === 'realm5' ? `${nearChallenge.title_hinglish} → Scheme` : `${nearChallenge.title_hinglish} → Challenge`,
             )}
           </button>
         </div>

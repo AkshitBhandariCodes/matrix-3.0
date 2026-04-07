@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
+import type { LearningContent } from '../types/learning'
 
 export type Language = 'hi' | 'en' | 'hinglish'
 export type Screen = 'intro' | 'hub' | 'realm1' | 'realm2' | 'realm3' | 'realm4' | 'realm5' | 'results' | 'gameover' | 'profile' | 'sakhisathi' | 'suraksha' | 'certificate' | 'zaroorat'
@@ -42,6 +43,7 @@ export interface GameState {
   transitionColor: string
   wrongCount: number
   voiceMode: boolean
+  learningContentCache: Record<string, LearningContent>
 
   setScreen: (screen: Screen) => void
   setPlayerName: (name: string) => void
@@ -56,6 +58,7 @@ export interface GameState {
   incrementWrongCount: () => void
   resetWrongCount: () => void
   toggleVoiceMode: () => void
+  setLearningContentCacheEntry: (key: string, value: LearningContent) => void
   resetGame: () => void
 }
 
@@ -89,6 +92,7 @@ export const useGameStore = create<GameState>()(persist((set, get) => ({
   transitionColor: '#7c3aed',
   wrongCount: 0,
   voiceMode: true,
+  learningContentCache: {},
 
   setScreen: (screen) => set({ screen }),
   setPlayerName: (playerName) => set({ playerName }),
@@ -143,6 +147,14 @@ export const useGameStore = create<GameState>()(persist((set, get) => ({
   resetWrongCount: () => set({ wrongCount: 0 }),
 
   toggleVoiceMode: () => set((s) => ({ voiceMode: !s.voiceMode })),
+
+  setLearningContentCacheEntry: (key, value) =>
+    set((state) => ({
+      learningContentCache: {
+        ...state.learningContentCache,
+        [key]: value,
+      },
+    })),
 
   resetGame: () =>
     set({
