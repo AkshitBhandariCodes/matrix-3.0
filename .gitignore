@@ -29,8 +29,6 @@ dist-ssr
 *.sw?
 
 # Environment secrets
-.env
-.env.*
 !.env.example
 
 # TypeScript / Vite cache
@@ -49,3 +47,4 @@ desktop.ini
 *.tmp
 *.temp
 .env.example
+config.bat
