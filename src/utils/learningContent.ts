@@ -2,6 +2,7 @@ import type { Challenge, Choice, Realm } from '../data/realms'
 import { useGameStore, type Language } from '../store/gameStore'
 import type { LearningContent } from '../types/learning'
 import type { ShgScheme } from '../data/shgSchemes'
+import { hasGeminiApiConfig, requestGeminiJson } from './geminiClient'
 
 interface LearningRequest {
   realm: Realm
@@ -23,8 +24,6 @@ interface SchemeGuideRequest {
   language: Language
 }
 
-const GEMINI_API_BASE_URL = import.meta.env.VITE_GEMINI_API_BASE_URL?.trim() || 'https://generativelanguage.googleapis.com/v1beta'
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY?.trim()
 const GEMINI_MODEL = import.meta.env.VITE_GEMINI_MODEL?.trim() || 'gemini-2.5-flash'
 const LEARNING_RESPONSE_SCHEMA = {
   type: 'object',
@@ -77,12 +76,12 @@ function setCacheEntry(key: string, value: LearningContent) {
 }
 
 function getCacheKey({ realm, challenge, choice, language }: LearningRequest) {
-  const mode = GEMINI_API_KEY ? 'gemini' : 'static'
+  const mode = hasGeminiApiConfig() ? 'gemini' : 'static'
   return [realm.id, challenge.id, choice.id, language, GEMINI_MODEL, mode].join(':')
 }
 
 function getSchemeGuideCacheKey({ scheme, language }: SchemeGuideRequest) {
-  const mode = GEMINI_API_KEY ? 'gemini' : 'static'
+  const mode = hasGeminiApiConfig() ? 'gemini' : 'static'
   return ['scheme-guide', scheme.id, language, GEMINI_MODEL, mode].join(':')
 }
 
@@ -351,15 +350,13 @@ function extractSchemeGuidePayload(payload: unknown) {
 }
 
 async function requestGeminiLearningContent(request: LearningRequest) {
-  if (!GEMINI_API_KEY) return null
+  if (!hasGeminiApiConfig()) return null
 
-  const response = await fetch(`${GEMINI_API_BASE_URL}/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': GEMINI_API_KEY,
-    },
-    body: JSON.stringify({
+  const json = await requestGeminiJson({
+    model: GEMINI_MODEL,
+    bucket: 'learning',
+    retries: 2,
+    body: {
       contents: [
         {
           role: 'user',
@@ -375,26 +372,20 @@ async function requestGeminiLearningContent(request: LearningRequest) {
           thinkingBudget: 0,
         },
       },
-    }),
+    },
   })
 
-  if (!response.ok) {
-    throw new Error(`Gemini request failed with ${response.status}`)
-  }
-
-  return extractTextPayload(await response.json())
+  return extractTextPayload(json)
 }
 
 async function requestGeminiSchemeGuide(request: SchemeGuideRequest) {
-  if (!GEMINI_API_KEY) return null
+  if (!hasGeminiApiConfig()) return null
 
-  const response = await fetch(`${GEMINI_API_BASE_URL}/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': GEMINI_API_KEY,
-    },
-    body: JSON.stringify({
+  const json = await requestGeminiJson({
+    model: GEMINI_MODEL,
+    bucket: 'learning',
+    retries: 2,
+    body: {
       contents: [
         {
           role: 'user',
@@ -410,14 +401,10 @@ async function requestGeminiSchemeGuide(request: SchemeGuideRequest) {
           thinkingBudget: 0,
         },
       },
-    }),
+    },
   })
 
-  if (!response.ok) {
-    throw new Error(`Gemini scheme guide failed with ${response.status}`)
-  }
-
-  return extractSchemeGuidePayload(await response.json())
+  return extractSchemeGuidePayload(json)
 }
 
 export async function getAdaptiveLearningContent(request: LearningRequest): Promise<LearningContent> {
@@ -434,7 +421,7 @@ export async function getAdaptiveLearningContent(request: LearningRequest): Prom
     return cached
   }
 
-  if (!GEMINI_API_KEY) {
+  if (!hasGeminiApiConfig()) {
     setCacheEntry(cacheKey, fallback)
     return fallback
   }
@@ -483,7 +470,7 @@ export async function getAdaptiveSchemeGuide(request: SchemeGuideRequest): Promi
     return cached
   }
 
-  if (!GEMINI_API_KEY) {
+  if (!hasGeminiApiConfig()) {
     return fallback
   }
 

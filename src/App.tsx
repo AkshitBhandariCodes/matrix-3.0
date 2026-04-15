@@ -9,6 +9,7 @@ import { CertificateScreen } from './screens/CertificateScreen'
 import { ZarooratGame } from './screens/ZarooratGame'
 import { SakhiSathi } from './screens/SakhiSathi'
 import { SurakshaSiren } from './screens/SurakshaSiren'
+import { SavingsAccountScreen } from './screens/SavingsAccountScreen'
 import { realm1, realm2, realm3, realm4, realm5 } from './data/realms'
 import { preloadCriticalAudio } from './utils/speech'
 import { PROTOTYPE_MODE, isRealmEnabled, type RealmScreen as PrototypeRealmScreen } from './config/prototype'
@@ -51,6 +52,7 @@ function App() {
       case 'zaroorat': return <ZarooratGame />
       case 'sakhisathi': return <SakhiSathi />
       case 'suraksha': return <SurakshaSiren />
+      case 'savings': return <SavingsAccountScreen />
       default: return <IntroScreen />
     }
   }

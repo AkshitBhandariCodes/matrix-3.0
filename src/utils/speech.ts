@@ -1,6 +1,10 @@
 export type SpeechLang = 'hi' | 'en' | 'hinglish'
 
+import { clearGeminiBucketLock, getGeminiBucketLockUntil, hasGeminiApiConfig, isGeminiBucketLocked, requestGeminiJson } from './geminiClient'
+
 type SpeakEmotion = 'friendly' | 'excited' | 'calm' | 'urgent'
+type AltCloudTtsProvider = 'none' | 'openai' | 'elevenlabs'
+type WebSpeechFallbackMode = 'always' | 'offline-only' | 'never'
 
 interface SpeakOptions {
   interrupt?: boolean
@@ -10,26 +14,46 @@ interface SpeakOptions {
   emotion?: SpeakEmotion
   speed?: number
   cacheable?: boolean
+  forceGeminiOnly?: boolean
 }
 
 export interface VoiceEngineInfo {
-  provider: 'gemini-tts' | 'web-speech' | 'disabled'
+  provider: 'gemini-tts' | 'alt-cloud-tts' | 'web-speech' | 'disabled'
   online: boolean
   apiConfigured: boolean
   voiceId: string
   modelId: string
 }
 
+export interface VoiceEngineDiagnostics {
+  online: boolean
+  apiConfigured: boolean
+  altApiConfigured: boolean
+  geminiLocked: boolean
+  geminiLockUntil: number
+  altCloudLocked: boolean
+  altCloudLockUntil: number
+  browserVoiceAvailable: boolean
+  provider: 'gemini-tts' | 'alt-cloud-tts' | 'web-speech' | 'disabled'
+  reason: string
+}
+
 const GEMINI_API_BASE_URL = (import.meta.env.VITE_GEMINI_API_BASE_URL as string | undefined)?.trim() || 'https://generativelanguage.googleapis.com/v1beta'
-const GEMINI_API_KEY = (import.meta.env.VITE_GEMINI_API_KEY as string | undefined)?.trim() || ''
 const GEMINI_TTS_MODEL = (import.meta.env.VITE_GEMINI_TTS_MODEL as string | undefined)?.trim() || 'gemini-2.5-flash-preview-tts'
 const GEMINI_TTS_VOICE = (import.meta.env.VITE_GEMINI_TTS_VOICE as string | undefined)?.trim() || 'Achird'
+const ALT_TTS_PROVIDER = ((import.meta.env.VITE_ALT_TTS_PROVIDER as string | undefined)?.trim().toLowerCase() || 'none') as AltCloudTtsProvider
+const ALT_TTS_BASE_URL = (import.meta.env.VITE_ALT_TTS_BASE_URL as string | undefined)?.trim() || 'https://api.openai.com/v1'
+const ALT_TTS_API_KEY = (import.meta.env.VITE_ALT_TTS_API_KEY as string | undefined)?.trim() || ''
+const ALT_TTS_MODEL = (import.meta.env.VITE_ALT_TTS_MODEL as string | undefined)?.trim() || 'gpt-4o-mini-tts'
+const ALT_TTS_VOICE = (import.meta.env.VITE_ALT_TTS_VOICE as string | undefined)?.trim() || 'alloy'
+const WEB_SPEECH_FALLBACK_MODE = ((import.meta.env.VITE_WEB_SPEECH_FALLBACK as string | undefined)?.trim().toLowerCase() || 'offline-only') as WebSpeechFallbackMode
+const ALT_TTS_LOCK_KEY = 'sakhi-alt-tts-lock-until'
+const ALT_TTS_TRANSIENT_LOCK_MS = 30 * 1000
+const ALT_TTS_MIN_GAP_MS = 1200
 
 const SAKHI_AUDIO_CACHE = 'sakhi-audio-v3'
 const SAKHI_AUDIO_CACHE_LIMIT_BYTES = 8 * 1024 * 1024
 const GEMINI_TTS_SAMPLE_RATE = 24000
-const GEMINI_TTS_LOCK_KEY = 'sakhi-gemini-tts-lock-until'
-const TRANSIENT_TTS_LOCK_MS = 30 * 1000
 
 export const SAKHI_PHRASES = [
   'Namaste Sakhi!',
@@ -45,7 +69,9 @@ let hasUserActivatedAudio = false
 let speechQueue: Promise<void> = Promise.resolve()
 let latestSpeechToken = 0
 let activeSpeechAbortController: AbortController | null = null
-let geminiTtsLockedUntil = readGeminiTtsLockUntil()
+let lastSpokenProvider: 'gemini-tts' | 'alt-cloud-tts' | 'web-speech' | 'none' = 'none'
+let altCloudLockedUntil = readAltCloudTtsLockUntil()
+let lastAltCloudRequestAt = 0
 const inflightAudioRequests = new Map<string, Promise<Blob | null>>()
 type UserActivationState = {
   hasBeenActive?: boolean
@@ -69,7 +95,75 @@ function isOnline() {
 }
 
 function hasGeminiTtsConfig() {
-  return GEMINI_API_KEY.length > 0
+  return hasGeminiApiConfig()
+}
+
+function hasAltCloudTtsConfig() {
+  return ALT_TTS_PROVIDER !== 'none' && ALT_TTS_API_KEY.length > 0
+}
+
+function canUseLocalStorage() {
+  return typeof window !== 'undefined' && 'localStorage' in window
+}
+
+function readAltCloudTtsLockUntil() {
+  if (!canUseLocalStorage()) return 0
+
+  const rawValue = window.localStorage.getItem(ALT_TTS_LOCK_KEY)
+  const lockUntil = rawValue ? Number(rawValue) : 0
+  return Number.isFinite(lockUntil) ? lockUntil : 0
+}
+
+function setAltCloudTtsLockUntil(lockUntil: number) {
+  altCloudLockedUntil = lockUntil
+
+  if (!canUseLocalStorage()) return
+
+  if (lockUntil > Date.now()) {
+    window.localStorage.setItem(ALT_TTS_LOCK_KEY, String(lockUntil))
+  } else {
+    window.localStorage.removeItem(ALT_TTS_LOCK_KEY)
+  }
+}
+
+function getNextLocalMidnightTimestamp() {
+  const nextMidnight = new Date()
+  nextMidnight.setHours(24, 0, 0, 0)
+  return nextMidnight.getTime()
+}
+
+function parseRetryAfterMs(retryAfterHeader: string | null) {
+  if (!retryAfterHeader) return null
+  const asSeconds = Number(retryAfterHeader)
+  if (Number.isFinite(asSeconds) && asSeconds > 0) return asSeconds * 1000
+
+  const asDate = Date.parse(retryAfterHeader)
+  if (Number.isFinite(asDate)) {
+    const diff = asDate - Date.now()
+    return diff > 0 ? diff : 0
+  }
+
+  return null
+}
+
+function isAltCloudTtsLocked() {
+  if (altCloudLockedUntil <= Date.now()) {
+    if (altCloudLockedUntil !== 0) {
+      setAltCloudTtsLockUntil(0)
+    }
+    return false
+  }
+
+  return true
+}
+
+async function waitForAltCloudRateWindow() {
+  const now = Date.now()
+  const waitMs = Math.max(0, ALT_TTS_MIN_GAP_MS - (now - lastAltCloudRequestAt))
+  if (waitMs > 0) {
+    await new Promise((resolve) => window.setTimeout(resolve, waitMs))
+  }
+  lastAltCloudRequestAt = Date.now()
 }
 
 function canUseCacheApi() {
@@ -80,49 +174,31 @@ function canUseWebSpeech() {
   return typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined'
 }
 
-function canUseLocalStorage() {
-  return typeof window !== 'undefined' && 'localStorage' in window
+function canUseWebSpeechFallbackMode(mode: string): mode is WebSpeechFallbackMode {
+  return mode === 'always' || mode === 'offline-only' || mode === 'never'
 }
 
-function readGeminiTtsLockUntil() {
-  if (!canUseLocalStorage()) return 0
-
-  const rawValue = window.localStorage.getItem(GEMINI_TTS_LOCK_KEY)
-  const lockUntil = rawValue ? Number(rawValue) : 0
-  return Number.isFinite(lockUntil) ? lockUntil : 0
+function isWebSpeechFallbackAllowed(online: boolean) {
+  const mode = canUseWebSpeechFallbackMode(WEB_SPEECH_FALLBACK_MODE) ? WEB_SPEECH_FALLBACK_MODE : 'offline-only'
+  if (mode === 'never') return false
+  if (mode === 'offline-only') return !online
+  return true
 }
 
-function setGeminiTtsLockUntil(lockUntil: number) {
-  geminiTtsLockedUntil = lockUntil
-
-  if (!canUseLocalStorage()) return
-
-  if (lockUntil > Date.now()) {
-    window.localStorage.setItem(GEMINI_TTS_LOCK_KEY, String(lockUntil))
-  } else {
-    window.localStorage.removeItem(GEMINI_TTS_LOCK_KEY)
-  }
-}
-
-function getNextLocalMidnightTimestamp() {
-  const nextMidnight = new Date()
-  nextMidnight.setHours(24, 0, 0, 0)
-  return nextMidnight.getTime()
+function canUseWebSpeechForCurrentState() {
+  return canUseWebSpeech() && isWebSpeechFallbackAllowed(isOnline())
 }
 
 function isGeminiTtsLocked() {
-  if (geminiTtsLockedUntil <= Date.now()) {
-    if (geminiTtsLockedUntil !== 0) {
-      setGeminiTtsLockUntil(0)
-    }
-    return false
-  }
-
-  return true
+  return isGeminiBucketLocked('tts')
 }
 
 function cacheKeyForText(text: string, lang: SpeechLang, emotion: SpeakEmotion) {
   return `${GEMINI_API_BASE_URL}/tts-cache/${GEMINI_TTS_MODEL}/${GEMINI_TTS_VOICE}/${lang}/${emotion}?text=${encodeURIComponent(text)}`
+}
+
+function cacheKeyForAltCloudText(text: string, lang: SpeechLang, emotion: SpeakEmotion) {
+  return `${ALT_TTS_BASE_URL}/tts-cache/${ALT_TTS_PROVIDER}/${ALT_TTS_MODEL}/${ALT_TTS_VOICE}/${lang}/${emotion}?text=${encodeURIComponent(text)}`
 }
 
 async function openAudioCache() {
@@ -175,6 +251,17 @@ async function getCachedAudio(text: string, lang: SpeechLang, emotion: SpeakEmot
   return response.clone().blob()
 }
 
+async function getCachedAudioByKey(cacheKey: string): Promise<Blob | null> {
+  const cache = await openAudioCache()
+  if (!cache) return null
+
+  const request = new Request(cacheKey)
+  const response = await cache.match(request)
+  if (!response) return null
+
+  return response.clone().blob()
+}
+
 async function cacheAudio(text: string, lang: SpeechLang, emotion: SpeakEmotion, blob: Blob) {
   const cache = await openAudioCache()
   if (!cache) return
@@ -184,6 +271,22 @@ async function cacheAudio(text: string, lang: SpeechLang, emotion: SpeakEmotion,
   const response = new Response(blob, {
     headers: {
       'Content-Type': 'audio/wav',
+      'Cache-Control': 'max-age=604800',
+    },
+  })
+
+  await cache.put(request, response)
+}
+
+async function cacheAudioByKey(cacheKey: string, blob: Blob) {
+  const cache = await openAudioCache()
+  if (!cache) return
+
+  await fitBlobInCache(cache, blob.size)
+  const request = new Request(cacheKey)
+  const response = new Response(blob, {
+    headers: {
+      'Content-Type': blob.type || 'audio/wav',
       'Cache-Control': 'max-age=604800',
     },
   })
@@ -381,6 +484,7 @@ async function speakWithWebVoice(
 
   try {
     synth.speak(utterance)
+    lastSpokenProvider = 'web-speech'
   } catch {
     if (activeUtterance === utterance) {
       activeUtterance = null
@@ -490,38 +594,35 @@ async function requestGeminiAudio(
     let lastError: Error | null = null
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const response = await fetch(`${GEMINI_API_BASE_URL}/models/${encodeURIComponent(GEMINI_TTS_MODEL)}:generateContent`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': GEMINI_API_KEY,
-        },
-        signal,
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: buildGeminiTtsPrompt(text, lang, emotion),
-                },
-              ],
-            },
-          ],
-          generationConfig: {
-            responseModalities: ['AUDIO'],
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: {
-                  voiceName: GEMINI_TTS_VOICE,
+      try {
+        const json = await requestGeminiJson({
+          model: GEMINI_TTS_MODEL,
+          bucket: 'tts',
+          signal,
+          retries: 1,
+          body: {
+            contents: [
+              {
+                parts: [
+                  {
+                    text: buildGeminiTtsPrompt(text, lang, emotion),
+                  },
+                ],
+              },
+            ],
+            generationConfig: {
+              responseModalities: ['AUDIO'],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: {
+                    voiceName: GEMINI_TTS_VOICE,
+                  },
                 },
               },
             },
           },
-        }),
-      })
+        })
 
-      if (response.ok) {
-        const json = await response.json()
         const base64Audio = extractGeminiAudioBase64(json)
         if (!base64Audio) {
           throw new Error('Gemini TTS returned no audio payload')
@@ -532,25 +633,121 @@ async function requestGeminiAudio(
           void cacheAudio(text, lang, emotion, blob)
         }
         return blob
+      } catch (error) {
+        lastError = error as Error
+        await new Promise((resolve) => window.setTimeout(resolve, 500 * (attempt + 1)))
       }
-
-      const errorText = await response.text()
-
-      if (response.status === 429) {
-        const isDailyQuotaLimit = /GenerateRequestsPerDayPerProjectPerModel-FreeTier|quota exceeded/i.test(errorText)
-        setGeminiTtsLockUntil(isDailyQuotaLimit ? getNextLocalMidnightTimestamp() : Date.now() + TRANSIENT_TTS_LOCK_MS)
-        throw new Error(isDailyQuotaLimit ? 'Gemini TTS daily quota exhausted' : 'Gemini TTS temporarily rate limited')
-      }
-
-      lastError = new Error(errorText || `Gemini TTS failed with status ${response.status}`)
-      if (response.status < 500) {
-        break
-      }
-
-      await new Promise((resolve) => window.setTimeout(resolve, 900 * (attempt + 1)))
     }
 
     throw lastError ?? new Error('Gemini TTS failed')
+  })()
+
+  inflightAudioRequests.set(requestKey, requestPromise)
+
+  try {
+    return await requestPromise
+  } finally {
+    inflightAudioRequests.delete(requestKey)
+  }
+}
+
+async function requestAltCloudAudio(
+  text: string,
+  {
+    lang,
+    emotion = 'friendly',
+    cacheable = true,
+    signal,
+  }: {
+    lang: SpeechLang
+    emotion?: SpeakEmotion
+    cacheable?: boolean
+    signal?: AbortSignal
+  },
+): Promise<Blob | null> {
+  if (!hasAltCloudTtsConfig()) return null
+  if (isAltCloudTtsLocked()) return null
+
+  const requestKey = cacheKeyForAltCloudText(text, lang, emotion)
+
+  if (cacheable) {
+    const cached = await getCachedAudioByKey(requestKey)
+    if (cached) return cached
+  }
+
+  const existingRequest = inflightAudioRequests.get(requestKey)
+  if (existingRequest) {
+    return existingRequest
+  }
+
+  const requestPromise = (async () => {
+    await waitForAltCloudRateWindow()
+
+    let response: Response
+
+    if (ALT_TTS_PROVIDER === 'openai') {
+      response = await fetch(`${ALT_TTS_BASE_URL.replace(/\/$/, '')}/audio/speech`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${ALT_TTS_API_KEY}`,
+        },
+        signal,
+        body: JSON.stringify({
+          model: ALT_TTS_MODEL,
+          voice: ALT_TTS_VOICE,
+          input: text,
+          format: 'wav',
+        }),
+      })
+    } else if (ALT_TTS_PROVIDER === 'elevenlabs') {
+      response = await fetch(`${ALT_TTS_BASE_URL.replace(/\/$/, '')}/v1/text-to-speech/${encodeURIComponent(ALT_TTS_VOICE)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'xi-api-key': ALT_TTS_API_KEY,
+          Accept: 'audio/mpeg',
+        },
+        signal,
+        body: JSON.stringify({
+          text,
+          model_id: ALT_TTS_MODEL || 'eleven_multilingual_v2',
+          optimize_streaming_latency: 1,
+          output_format: 'mp3_44100_128',
+          voice_settings: {
+            stability: 0.45,
+            similarity_boost: 0.75,
+            style: 0.2,
+            use_speaker_boost: true,
+          },
+        }),
+      })
+    } else {
+      return null
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text()
+
+      if (response.status === 429) {
+        const isDailyQuotaLimit = /insufficient_quota|quota exceeded|exceeded your current quota/i.test(errorText)
+        if (isDailyQuotaLimit) {
+          setAltCloudTtsLockUntil(getNextLocalMidnightTimestamp())
+        } else {
+          const retryMs = parseRetryAfterMs(response.headers.get('retry-after')) ?? ALT_TTS_TRANSIENT_LOCK_MS
+          setAltCloudTtsLockUntil(Date.now() + retryMs)
+        }
+      }
+
+      throw new Error(errorText || `Alt cloud TTS failed with status ${response.status}`)
+    }
+
+    const blob = await response.blob()
+    if (cacheable) {
+      void cacheAudioByKey(requestKey, blob)
+    }
+
+    return blob
   })()
 
   inflightAudioRequests.set(requestKey, requestPromise)
@@ -592,15 +789,73 @@ async function playAudioBlob(blob: Blob, speed = 1): Promise<HTMLAudioElement | 
 
 export function getVoiceEngineInfo(): VoiceEngineInfo {
   const hasGeminiVoice = isOnline() && hasGeminiTtsConfig() && !isGeminiTtsLocked()
-  const hasBrowserVoice = canUseWebSpeech()
+  const hasAltCloudVoice = isOnline() && hasAltCloudTtsConfig() && !isAltCloudTtsLocked()
+  const hasBrowserVoice = canUseWebSpeechForCurrentState()
 
   return {
-    provider: hasGeminiVoice ? 'gemini-tts' : hasBrowserVoice ? 'web-speech' : 'disabled',
+    provider: hasGeminiVoice ? 'gemini-tts' : hasAltCloudVoice ? 'alt-cloud-tts' : hasBrowserVoice ? 'web-speech' : 'disabled',
     online: isOnline(),
-    apiConfigured: hasGeminiTtsConfig(),
-    voiceId: GEMINI_TTS_VOICE,
-    modelId: GEMINI_TTS_MODEL,
+    apiConfigured: hasGeminiApiConfig(),
+    voiceId: hasGeminiVoice ? GEMINI_TTS_VOICE : ALT_TTS_VOICE,
+    modelId: hasGeminiVoice ? GEMINI_TTS_MODEL : ALT_TTS_MODEL,
   }
+}
+
+export function getVoiceEngineDiagnostics(): VoiceEngineDiagnostics {
+  const online = isOnline()
+  const apiConfigured = hasGeminiApiConfig()
+  const altApiConfigured = hasAltCloudTtsConfig()
+  const geminiLocked = isGeminiTtsLocked()
+  const altCloudLocked = isAltCloudTtsLocked()
+  const browserVoiceAvailable = canUseWebSpeech()
+  const browserVoiceAllowed = isWebSpeechFallbackAllowed(online)
+  const provider = online && apiConfigured && !geminiLocked
+    ? 'gemini-tts'
+    : online && altApiConfigured && !altCloudLocked
+      ? 'alt-cloud-tts'
+      : browserVoiceAvailable && browserVoiceAllowed
+        ? 'web-speech'
+        : 'disabled'
+
+  let reason = 'gemini-ready'
+  if (!online) {
+    reason = 'offline'
+  } else if (!apiConfigured) {
+    reason = altApiConfigured && !altCloudLocked ? 'gemini-missing-alt-ready' : 'missing-api-key'
+  } else if (geminiLocked) {
+    reason = altApiConfigured && !altCloudLocked ? 'gemini-locked-alt-ready' : 'gemini-locked-or-quota'
+  } else if (altCloudLocked) {
+    reason = 'alt-cloud-locked-or-quota'
+  } else if (browserVoiceAvailable && !browserVoiceAllowed) {
+    reason = 'web-speech-disabled'
+  } else if (provider !== 'gemini-tts') {
+    reason = 'unknown-fallback'
+  }
+
+  return {
+    online,
+    apiConfigured,
+    altApiConfigured,
+    geminiLocked,
+    geminiLockUntil: getGeminiBucketLockUntil('tts'),
+    altCloudLocked,
+    altCloudLockUntil: altCloudLockedUntil,
+    browserVoiceAvailable,
+    provider,
+    reason,
+  }
+}
+
+export function resetGeminiTtsLock() {
+  clearGeminiBucketLock('tts')
+}
+
+export function resetAltCloudTtsLock() {
+  setAltCloudTtsLockUntil(0)
+}
+
+export function getLastSpokenProvider() {
+  return lastSpokenProvider
 }
 
 export async function sakhiSpeak(
@@ -614,6 +869,7 @@ export async function sakhiSpeak(
     volume = 1,
     interrupt = true,
     cacheable = true,
+    forceGeminiOnly = false,
   }: SpeakOptions & { lang?: SpeechLang } = {},
 ): Promise<HTMLAudioElement | null> {
   const cleanText = text.trim()
@@ -630,9 +886,11 @@ export async function sakhiSpeak(
   }
 
   const canAttemptGemini = isOnline() && hasGeminiTtsConfig() && !isGeminiTtsLocked()
-  const canAttemptBrowserVoice = canUseWebSpeech()
+  const canAttemptAltCloud = isOnline() && hasAltCloudTtsConfig() && !isAltCloudTtsLocked()
+  const canAttemptBrowserVoice = canUseWebSpeechForCurrentState()
+  const allowBrowserFallback = !forceGeminiOnly && canAttemptBrowserVoice
 
-  if (!canAttemptGemini && !canAttemptBrowserVoice) {
+  if (!canAttemptGemini && !canAttemptAltCloud && !allowBrowserFallback) {
     return null
   }
 
@@ -662,12 +920,40 @@ export async function sakhiSpeak(
         if (interrupt !== false && speechToken !== latestSpeechToken) return
         if (blob) {
           playedAudio = await playAudioBlob(blob, speed)
+          if (playedAudio) {
+            lastSpokenProvider = 'gemini-tts'
+          }
           return
         }
       }
 
       if (interrupt !== false && speechToken !== latestSpeechToken) return
-      if (!canAttemptBrowserVoice) return
+
+      if (canAttemptAltCloud) {
+        const abortController = new AbortController()
+        activeSpeechAbortController = abortController
+        const blob = await requestAltCloudAudio(speechText, {
+          lang,
+          emotion,
+          cacheable,
+          signal: abortController.signal,
+        })
+        if (activeSpeechAbortController === abortController) {
+          activeSpeechAbortController = null
+        }
+
+        if (interrupt !== false && speechToken !== latestSpeechToken) return
+        if (blob) {
+          playedAudio = await playAudioBlob(blob, speed)
+          if (playedAudio) {
+            lastSpokenProvider = 'alt-cloud-tts'
+          }
+          return
+        }
+      }
+
+      if (interrupt !== false && speechToken !== latestSpeechToken) return
+      if (!allowBrowserFallback) return
       playedAudio = await speakWithWebVoice(speechText, { lang, speed, rate, pitch, volume, interrupt })
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
@@ -675,13 +961,13 @@ export async function sakhiSpeak(
       }
 
       if (interrupt !== false && speechToken !== latestSpeechToken) return
-      if (canAttemptBrowserVoice) {
+      if (allowBrowserFallback) {
         playedAudio = await speakWithWebVoice(speechText, { lang, speed, rate, pitch, volume, interrupt })
         return
       }
 
       if (import.meta.env.DEV) {
-        console.warn('Gemini TTS unavailable', error)
+        console.warn('Cloud TTS unavailable', error)
       }
     }
   })

@@ -48,3 +48,4 @@ desktop.ini
 # Misc temp files
 *.tmp
 *.temp
+.env.example

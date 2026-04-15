@@ -3,7 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import type { LearningContent } from '../types/learning'
 
 export type Language = 'hi' | 'en' | 'hinglish'
-export type Screen = 'intro' | 'hub' | 'realm1' | 'realm2' | 'realm3' | 'realm4' | 'realm5' | 'results' | 'gameover' | 'profile' | 'sakhisathi' | 'suraksha' | 'certificate' | 'zaroorat'
+export type Screen = 'intro' | 'hub' | 'realm1' | 'realm2' | 'realm3' | 'realm4' | 'realm5' | 'results' | 'gameover' | 'profile' | 'sakhisathi' | 'suraksha' | 'certificate' | 'zaroorat' | 'savings'
 
 export interface PlayerStats {
   health: number
@@ -44,11 +44,14 @@ export interface GameState {
   wrongCount: number
   voiceMode: boolean
   learningContentCache: Record<string, LearningContent>
+  emergencyContact: string
 
   setScreen: (screen: Screen) => void
   setPlayerName: (name: string) => void
   setLanguage: (lang: Language) => void
+  setEmergencyContact: (contact: string) => void
   cycleLang: () => void
+  importProgress: (dataStr: string) => boolean
   applyStatDelta: (delta: StatDelta, feedback: string, good: boolean) => void
   clearFeedback: () => void
   completeRealm: (realm: 1 | 2 | 3 | 4 | 5, score: number) => void
@@ -93,10 +96,30 @@ export const useGameStore = create<GameState>()(persist((set, get) => ({
   wrongCount: 0,
   voiceMode: true,
   learningContentCache: {},
+  emergencyContact: '',
 
   setScreen: (screen) => set({ screen }),
   setPlayerName: (playerName) => set({ playerName }),
   setLanguage: (language) => set({ language }),
+  setEmergencyContact: (contact) => set({ emergencyContact: contact }),
+
+  importProgress: (dataStr: string) => {
+    try {
+      const data = JSON.parse(atob(dataStr))
+      // Only merge safe progression keys
+      const safeMerge: Partial<GameState> = {}
+      if (data.r1) safeMerge.realm1Completed = true
+      if (data.r2) safeMerge.realm2Completed = true
+      if (data.r3) safeMerge.realm3Completed = true
+      if (data.r4) safeMerge.realm4Completed = true
+      if (data.r5) safeMerge.realm5Completed = true
+      if (Object.keys(safeMerge).length > 0) {
+        set(safeMerge)
+        return true
+      }
+    } catch(e) { }
+    return false
+  },
 
   cycleLang: () =>
     set((state) => {
